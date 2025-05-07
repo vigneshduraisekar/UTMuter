@@ -32,15 +32,15 @@ UTMuter is a Python-based framework for mutation testing of C and C++ codebases.
 
 Basic usage:
 ```
-python src/main.py --source <source_file_or_dir> [<source_file_or_dir> ...] --test <test_file_or_dir> [--mut <mutant_output_dir>]
+python src/main.py --source [<source_file_or_dir> ...] --test [<test_file_or_dir> ...] [--mut <mutant_output_dir>]
 ```
 - `--source`: Path(s) to C/C++ source file(s) or directory(ies) to mutate.
-- `--test`: Path to a C/C++ test source file or directory.
-- `--mut`: (Optional) Path to output mutant source folder (default: `mutant`).
+- `--test`: Path(s) to a C/C++ test file(s) source file or directory.
+- `--mut`: (Optional) Path to output mutant source folder (default: `mutants_output`).
 
 Example:
 ```
-python src/main.py --source test_project/src/example.c --test test_project/test/
+python src/main.py --source test_project/src/ --test test_project/test/
 ```
 
 ## Output
@@ -48,4 +48,4 @@ python src/main.py --source test_project/src/example.c --test test_project/test/
 - Mutation testing results are printed to the console.
 
 ## License
-MIT
+This project is licensed under the Custom License. See the [LICENSE](./LICENSE) file for details.

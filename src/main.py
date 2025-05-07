@@ -7,7 +7,7 @@ from parser import Parser
 from mutator import Mutator
 from reporter import Reporter
 
-DEFAULT_MUTANTS_SUBDIR = "mutants_output" # Changed from "mutant" to be more descriptive
+DEFAULT_MUTANTS_SUBDIR = "mutants_output"
 
 logger = logging.getLogger(__name__)
 
