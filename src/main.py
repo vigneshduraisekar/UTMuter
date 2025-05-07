@@ -12,7 +12,7 @@ DEFAULT_MUTANTS_SUBDIR = "mutants_output" # Changed from "mutant" to be more des
 logger = logging.getLogger(__name__)
 
 class MutationTester:
-    def __init__(self, source_args: List[str], test_arg: str, base_mutants_dir: Optional[str] = None):
+    def __init__(self, source_args: List[str], test_arg: List[str], base_mutants_dir: Optional[str] = None):
         self.source_args = source_args
         self.test_arg = test_arg
 
@@ -38,14 +38,16 @@ class MutationTester:
         return parser.parse_args()
 
     def collect_files(self) -> bool:
-        self.source_paths = [file for src in self.source_args for file in Parser.collect_c_cpp_files(src)]
+        self.source_paths = Parser.collect_c_cpp_files(self.source_args)
         if not self.source_paths:
             logger.error(f"No source files found in specified paths: {self.source_args}")
             return False
+
         self.test_paths = Parser.collect_c_cpp_files(self.test_arg)
         if not self.test_paths:
             logger.error(f"No test source files found in {self.test_arg}")
             return False
+
         logger.info(f"Found {len(self.source_paths)} source file(s) and {len(self.test_paths)} test file(s).")
         return True
 

@@ -7,30 +7,34 @@ logger = logging.getLogger(__name__)
 
 class Parser:
     @staticmethod
-    def collect_c_cpp_files(path: str, recursive: bool = True) -> List[str]:
+    def collect_c_cpp_files(paths: str | List[str], recursive: bool = True) -> List[str]:
         """
-        Return a list of C/C++ source and header files from a file or directory path.
+        Return a list of C/C++ source and header files from a file, directory path, or list of paths.
         Searches recursively by default.
         Supported extensions: .c, .cpp, .h, .hpp
         """
+        if isinstance(paths, str):
+            paths = [paths]  # Convert single path to a list for uniform handling
+
         collected_files: List[str] = []
         supported_extensions: Set[str] = {'.c', '.cpp', '.h', '.hpp'}
 
-        if os.path.isfile(path):
-            if os.path.splitext(path)[1] in supported_extensions:
-                collected_files.append(os.path.abspath(path))
-        elif os.path.isdir(path):
-            for root, _, files in os.walk(path):
-                for fname in files:
-                    if os.path.splitext(fname)[1] in supported_extensions:
-                        collected_files.append(os.path.abspath(os.path.join(root, fname)))
-                if not recursive:
-                    break
-        else:
-            logger.warning(f"Path not found or is not a file/directory: {path}")
+        for path in paths:
+            if os.path.isfile(path):
+                if os.path.splitext(path)[1] in supported_extensions:
+                    collected_files.append(os.path.abspath(path))
+            elif os.path.isdir(path):
+                for root, _, files in os.walk(path):
+                    for fname in files:
+                        if os.path.splitext(fname)[1] in supported_extensions:
+                            collected_files.append(os.path.abspath(os.path.join(root, fname)))
+                    if not recursive:
+                        break
+            else:
+                logger.warning(f"Path not found or is not a file/directory: {path}")
 
         if not collected_files:
-            logger.debug(f"No C/C++ files found in: {path}")
+            logger.debug(f"No C/C++ files found in: {paths}")
         return collected_files
 
     @staticmethod
