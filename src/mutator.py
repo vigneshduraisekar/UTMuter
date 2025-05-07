@@ -10,6 +10,7 @@ from typing import List, Tuple, Dict, Any
 from parser import Parser
 from builder import Builder
 from tester import Tester
+from constants import *
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +49,11 @@ class Mutator:
         source_lines = source_code.splitlines()
         base_name = os.path.splitext(os.path.basename(source_path))[0]
         matching_tests = Parser.find_matching_tests(test_paths, base_name)
-        print(f"======================================== Processing source file =======================================")
-        print(f"Source file: {source_path}")
-        print(f"Matching test files for source: \n {matching_tests}")
+        print(f"{SHORT_DASH} Processing source file {SHORT_DASH}")
+        logger.info(f"Source file: {source_path}")
+        logger.info(f"Matching test files for source: \n {matching_tests}")
         if not matching_tests:
-            print(f"No matching test files found for source {source_path}. Skipping.")
+            logger.debug(f"No matching test files found for source {source_path}. Skipping.")
             return total, killed, survived, mutant_test_records
 
         func_mut_points = Parser.group_mutation_points_by_function(mutation_points, source_lines)
@@ -62,9 +63,10 @@ class Mutator:
                 test_path for test_path in matching_tests
                 if func_name in os.path.splitext(os.path.basename(test_path))[0]
             ]
-            print(f"Relevant test files for function '{func_name}':\n {relevant_tests}")
+            logger.info(f"Relevant test files for function '{func_name}':\n {relevant_tests}")
+            print(LONG_DASH)
             if not relevant_tests:
-                print(f"No relevant test files found for function {func_name} in source {source_path}. Skipping mutants for this function.")
+                logger.debug(f"No relevant test files found for function {func_name} in source {source_path}. Skipping mutants for this function.")
                 continue
             for i, point in enumerate(points):
                 mutant_base = f"mutant_{base_name}_{func_name}_{i}"
@@ -79,25 +81,31 @@ class Mutator:
                 for test_path in relevant_tests:
                     test_base = os.path.splitext(os.path.basename(test_path))[0]
                     binary_path = os.path.join(mutants_dir, f"{mutant_base}")
+                    logger.info(f"Building... [Mutant {mutant_base}]")
                     build_ok = Builder.build_sources([mutant_path, test_path], binary_path)
                     if not build_ok:
-                        print(f"[Mutant {mutant_base} | Test {test_base}] Build failed. Counting as killed.")
-                        mutant_killed = True
-                        killed_by = test_path
-                        mutant_test_records.append((mutant_path, test_path, "killed", source_path))
-                        break
-                    result = Tester.run_tests(binary_path)
-                    if not result:
-                        print(f"[Mutant {mutant_base} | Test {test_base}] Killed.")
+                        logger.warning(f"[Pass] [Mutant {mutant_base} | Test {test_base}] Build failed. Counting as killed.")
                         mutant_killed = True
                         killed_by = test_path
                         mutant_test_records.append((mutant_path, test_path, "killed", source_path))
                         break
                     else:
-                        print(f"[Mutant {mutant_base} | Test {test_base}] Survived this test.")
+                        logger.info(f"Build Success")
+
+                    logger.info(f"Testing...")
+                    result = Tester.run_tests(binary_path)
+                    if not result:
+                        logger.info(f"[Pass] [Mutant {mutant_base} | Test {test_base}] Killed.")
+                        mutant_killed = True
+                        killed_by = test_path
+                        mutant_test_records.append((mutant_path, test_path, "killed", source_path))
+                        break
+                    else:
+                        logger.error(f"[Fail] [Mutant {mutant_base} | Test {test_base}] Survived this test.")
                         survived_by.append(test_path)
                         mutant_test_records.append((mutant_path, test_path, "survived", source_path))
-
+                print(LONG_DASH)
+                
                 total += 1
                 if mutant_killed:
                     killed += 1

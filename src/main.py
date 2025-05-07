@@ -1,13 +1,12 @@
 import os
 import argparse
 import logging
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from parser import Parser
 from mutator import Mutator
 from reporter import Reporter
-
-DEFAULT_MUTANTS_SUBDIR = "mutants_output"
+from constants import *
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class MutationTester:
 
     @staticmethod
     def parse_args() -> argparse.Namespace:
-        parser = argparse.ArgumentParser(description="Automatic Mutation Testing for C/C++ Unit Tests")
+        parser = argparse.ArgumentParser(description=DESCRIPTION)
         parser.add_argument('--source', required=True, nargs='+', help='Path(s) to C/C++ source file(s) or folder(s)')
         parser.add_argument('--test', required=True, help='Path to a C/C++ test source file or folder')
         parser.add_argument('--mut', required=False, help='Base directory to store generated mutant files and binaries.')
@@ -78,11 +77,14 @@ class MutationTester:
             mutant_test_records=self.all_mutant_test_records
         )
 
+def title():
+    print(DOUBLE_DASH_LONG)
+    print(f"{APP_NAME} {VERSION}: {DESCRIPTION}".center(106))
+    print(DOUBLE_DASH_LONG)
+
 def main():
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-    print("*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
-    print("*=*=*=*=*=*=*=*=*=*=*= UTMuter: Automatic Mutation Testing for C/C++ Unit Tests *=*=*=*=*=*=*=*=*=*=*=*")
-    print("*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*")
+    logging.basicConfig(level=logging.INFO, format=LOGGING_FORMAT)
+    title()
     args = MutationTester.parse_args()
     tester = MutationTester(args.source, args.test, args.mut)
     tester.run()
