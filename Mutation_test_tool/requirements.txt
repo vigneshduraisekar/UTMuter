@@ -1,0 +1,9 @@
+# Requirements File for GUI
+customtkinter==5.2.2
+CTkMenuBar==0.8
+CTkMessagebox==2.7
+CTkToolTip==0.8
+pillow==10.4.0
+lxml==5.3.0
+markdown2==2.5.1
+pyinstaller==6.10.0
