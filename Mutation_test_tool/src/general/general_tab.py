@@ -16,7 +16,10 @@ import tkinter as tk
 
 import customtkinter as ctk
 import re
+import os
+from pathlib import Path
 from src.utilities.messagebox_helper import SimpleErrorMessage
+from src.utilities.messagebox_helper import SimpleWarnMessage
 from src.utilities.validation_helper import validate_folder
 from src.utilities.widget_helper import FolderEntry
 from src.utilities.widget_helper import StringEntry
@@ -85,14 +88,19 @@ def add_general_panel(app):
         tooltip="Enter source file path [string] avoid special characters",
     )
 
-    app.cfile_entry = FolderEntry(
-        app, general_panel, placeholder="Enter source file Path... --> Click select Button",
-        row=3, column=1, columnspan=4, description="Workspace Path Entry",
-        tooltip="Enter source file Path [string] avoid special characters",
-    )
+    # app.cfile_entry = FolderEntry(
+    #     app, general_panel, placeholder="Enter source file Path... --> Click select Button",
+    #     row=3, column=1, columnspan=4, description="Workspace Path Entry",
+    #     tooltip="Enter source file Path [string] avoid special characters",
+    # )
+    app.cfile_entry = ctk.CTkEntry(general_panel, placeholder_text="Enter Source File Path... --> Click select Button")
+    app.cfile_entry.bind("<Return>", lambda event: app.window.focus_set())
+    app.cfile_entry.configure(validate="focusout", validatecommand=lambda: validate_file(app, app.cfile_entry.get()))
+    app.cfile_entry.grid(columnspan=4, row=3, column=1, padx=5, pady=5, sticky=tk.EW)
+    ToolTip(app.cfile_entry, "Enter Source File Path [string] avoid special characters")
 
     cfile_button = ctk.CTkButton(general_panel, text="select")
-    cfile_button.configure(command=lambda: select_path(app, app.cfile_entry))
+    cfile_button.configure(command=lambda: select_file(app, app.cfile_entry))
     cfile_button.grid(row=3, column=5, padx=5, pady=5, sticky=tk.EW)
 
 # Create Mutant generation Panel
@@ -121,25 +129,24 @@ def add_generatemutant_panel(app):
         tooltip="Select Function for which code to be generated",
     )
 
+
     app.function_option = ctk.CTkOptionMenu(
         generatemutant_panel,
-        values=["All","rb_RxE2E_Cyclic", "rb_RxE2E_GenSPDUInit", "rb_RxE2E_GenRxBufferInit", "rb_RxE2E_ClearErrorMemory", "rb_RxE2E_SetErrorMemory"],
-        command=lambda event=None: on_option_change(app.virtual_bus_type_option.get(), app),
-    )
-    app.function_option.grid(row=0, column=1, padx=5, pady=5, sticky=tk.EW)
-    ToolTip(app.function_option, "Select Mutant type for which code to be generated")
+        values=["All"])
 
-    
+    app.function_option.grid(row=0, column=1, padx=5, pady=5, sticky=tk.EW)
+    ToolTip(app.function_option, "Select function for which code to be generated")
+
+    #Select the Mutant type
     WidgetLabel(
         generatemutant_panel, text="Mutant Type:", anchor=tk.E, row=0, column=2,
-        tooltip="Select Mutant type for which code to be generated",
+        tooltip="Select function for which code to be generated",
     )
 
     app.mutant_type_option = ctk.CTkOptionMenu(
         generatemutant_panel,
-        values=["All","Relational change", "Logical change", "Arithmetic change", "Off by One error", "Return change"],
-        command=lambda event=None: on_option_change(app.virtual_bus_type_option.get(), app),
-    )
+        values=["All","Relational Operator", "Logical Operator", "Arithmetic Operator", "Off by One error", "Return value Change", "Assignment error",
+                "Break semantics", "Control Flow Alteration", "Value change", "Wrong Variable Use", "Pointer Arithmetic", "Null Bugs"])
     app.mutant_type_option.grid(row=0, column=3, padx=5, pady=5, sticky=tk.EW)
     ToolTip(app.mutant_type_option, "Select Mutant type for which code to be generated")
 
@@ -157,9 +164,8 @@ def add_generatemutant_panel(app):
 
     app.fctn_option = ctk.CTkOptionMenu(
         generatemutant_panel,
-        values=["All","rb_RxE2E_Cyclic", "rb_RxE2E_GenSPDUInit", "rb_RxE2E_GenRxBufferInit", "rb_RxE2E_ClearErrorMemory", "rb_RxE2E_SetErrorMemory"],
-        command=lambda event=None: on_option_change(app.virtual_bus_type_option.get(), app),
-    )
+        values=["All"])
+    
     app.fctn_option.grid(row=1, column=1, padx=5, pady=5, sticky=tk.EW)
     ToolTip(app.fctn_option, "Select Function for which code to be generated")
 
@@ -170,9 +176,8 @@ def add_generatemutant_panel(app):
 
     app.mutanttype_option = ctk.CTkOptionMenu(
         generatemutant_panel,
-        values=["All","Relational change", "Logical change", "Arithmetic change", "Off by One error", "Return change"],
-        command=lambda event=None: on_option_change(app.virtual_bus_type_option.get(), app),
-    )
+        values=["All","Relational Operator", "Logical Operator", "Arithmetic Operator", "Off by One error", "Return value Change", "Assignment error",
+                "Break semantics", "Control Flow Alteration", "Value change", "Wrong Variable Use", "Pointer Arithmetic", "Null Bugs"])
     app.mutanttype_option.grid(row=1, column=3, padx=5, pady=5, sticky=tk.EW)
     ToolTip(app.mutanttype_option, "Select Mutant type for which code to be generated")
 
@@ -339,3 +344,85 @@ def select_path(app, target_entry):
         if validate_folder(app, target_entry) != 0:
             target_entry.delete(0, tk.END)
             target_entry.insert(0, old_path)
+
+def select_file(app, target_entry):
+    """Select a CRC/SecOC file and insert it into the target entry"""
+    # Define the allowed file extensions
+    file_types = (
+        ("C files", "*.c"),
+        ("C++ files", "*.cpp"),
+        ("All files", "*.*"),
+    )
+
+    workspace_path = Path(app.workspace_entry.get())
+
+    if workspace_path.exists():
+        file_path = tk.filedialog.askopenfilename(initialdir=workspace_path, filetypes=file_types)
+    else:
+        file_path = tk.filedialog.askopenfilename(filetypes=file_types)
+
+    if file_path:  # If a file is selected
+        if validate_file(app, file_path):
+            # Delete previous content in target entry
+            target_entry.delete(0, tk.END)
+            # Insert selected file path into target entry
+            target_entry.insert(0, file_path)
+
+# Callback Function to validate the CRC file
+####################################################################################################
+def validate_file(app, path):
+    """Validate the CRC/SecOC file path"""
+    allowed_extensions = (".c", ".cpp")
+    if path:
+        if not (os.path.exists(path) and os.path.isfile(path)):
+            # Show a warning message if the file does not exist
+            SimpleWarnMessage(app.window, title="File Warning!", message="File does not exist. Please select a valid file.")
+            return False
+        _, file_extension = os.path.splitext(path)
+        if file_extension.lower() not in allowed_extensions:
+            # Show a warning message if the file extension is not allowed
+            SimpleWarnMessage(app.window, title="File Warning!", message="Invalid file extension. Please select a file with the allowed extension(s). [c, cpp]")
+            return False
+    function_regex = re.compile(r'^\s*[\w*\[\]]+\s+(\w+)\s*\(.*\)\s*{', re.MULTILINE)
+
+    with open(path, 'r') as file:
+        c_code = file.read()
+    
+    # Find all function names
+    function_names = function_regex.findall(c_code)
+    function_names.insert(0, "All")  # Optional: insert "All" at the top
+    app.function_option.configure(values=function_names)
+    app.function_option.set("All")
+    app.fctn_option.configure(values=function_names)
+    app.fctn_option.set("All")
+
+    return True
+
+def show_scrollable_dropdown(app, values):
+    """Show a scrollable dropdown menu in a popup window."""
+    popup = ctk.CTkToplevel()
+    popup.title("Select Function")
+    popup.geometry("300x300")
+    popup.grab_set()  # Modal behavior
+
+    frame = tk.Frame(popup)
+    frame.pack(fill=tk.BOTH, expand=True)
+
+    scrollbar = tk.Scrollbar(frame)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, selectmode=tk.SINGLE)
+    listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    scrollbar.config(command=listbox.yview)
+
+    for val in values:
+        listbox.insert(tk.END, val)
+
+    def on_select(event=None):
+        selected_index = listbox.curselection()
+        if selected_index:
+            selected = listbox.get(selected_index)
+            app.function_option_var.set(selected)
+            popup.destroy()
+
+    listbox.bind("<Double-1>", on_select)
