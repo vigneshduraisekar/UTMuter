@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from openai import OpenAI
 
 import customtkinter as ctk
 import re
@@ -25,6 +26,30 @@ from src.utilities.widget_helper import FolderEntry
 from src.utilities.widget_helper import StringEntry
 from src.utilities.widget_helper import ToolTip
 from src.utilities.widget_helper import WidgetLabel
+
+class llmfarminf():
+    def __init__(self, model = "gpt-4o-mini") -> None:
+        self.model = model
+        self.client = OpenAI(
+            api_key="dummy",
+            base_url="https://aoai-farm.bosch-temp.com/api/openai/deployments/askbosch-prod-farm-openai-gpt-4o-mini-2024-07-18",
+            default_headers = {"genaiplatform-farm-subscription-key": "e51cbe98f0c64e41befc98eb8eca66d9"}
+        )
+
+    def _gen_message(self, sysprompt, userprompt):
+        return [
+            {"role" : "system", "content" : sysprompt},
+            {"role" : "user", "content" : userprompt}
+        ]
+
+    def _completion(self, usertext, sysprompt):
+        messages = self._gen_message(sysprompt, usertext)
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            extra_query={"api-version": "2024-08-01-preview"}
+        )
+        return response.choices[0].message.content
 
 ####################################################################################################
 # Main Setup Function                                                                              #
@@ -151,7 +176,7 @@ def add_generatemutant_panel(app):
     ToolTip(app.mutant_type_option, "Select Mutant type for which code to be generated")
 
     Gen_button = ctk.CTkButton(generatemutant_panel, text="Generate Mutant")
-    Gen_button.configure(command=lambda: select_path(app, app.cfile_entry))
+    Gen_button.configure(command=lambda: gen_mutant(app))
     Gen_button.grid(row=0, column=4, padx=5, pady=5, sticky=tk.EW)
 
      # Mutants test execution Widget
@@ -345,6 +370,8 @@ def select_path(app, target_entry):
             target_entry.delete(0, tk.END)
             target_entry.insert(0, old_path)
 
+# Callback Functions to get C file name
+####################################################################################################
 def select_file(app, target_entry):
     """Select a CRC/SecOC file and insert it into the target entry"""
     # Define the allowed file extensions
@@ -368,7 +395,7 @@ def select_file(app, target_entry):
             # Insert selected file path into target entry
             target_entry.insert(0, file_path)
 
-# Callback Function to validate the CRC file
+# Callback Function to validate the C file and get function name list
 ####################################################################################################
 def validate_file(app, path):
     """Validate the CRC/SecOC file path"""
@@ -391,6 +418,8 @@ def validate_file(app, path):
     # Find all function names
     function_names = function_regex.findall(c_code)
     function_names.insert(0, "All")  # Optional: insert "All" at the top
+    if "if" in function_names:
+        function_names.remove("if")
     app.function_option.configure(values=function_names)
     app.function_option.set("All")
     app.fctn_option.configure(values=function_names)
@@ -398,6 +427,81 @@ def validate_file(app, path):
 
     return True
 
+# Callback Function to generate mutant and save the c file
+####################################################################################################
+def gen_mutant(app):
+    obj = llmfarminf()
+    select_operator = app.mutant_type_option.get()
+    function_name = app.function_option.get()
+    c_file_path= app.cfile_entry.get()
+    c_function_code = extract_function_code(c_file_path, function_name)
+
+    system_prompt = "You are a programming expert with focus on mutation testing."
+    user_prompt = f"""
+    Generate specific mutation variants of this C function by changing ONLY ONE operator at a time.
+    For each mutation:
+    1. Give it a name (Mutant_Arithmatic, Mutant_Relational, etc.)
+    2. Show the complete function with the mutation highlighted or commented
+    3. Explain how the mutation changes the behavior
+
+    Target these operators for mutation:
+    - {select_operator}
+     generate all possible mutants combination by changing only one {select_operator} at a time
+
+    {c_function_code}
+    """
+
+    # Get the response
+    response = obj._completion(user_prompt, system_prompt)
+    # Extract mutants
+    mutants = extract_c_blocks(response)
+
+    # Write  mutants
+    report = write_and_compile(app, mutants)
+
+def extract_function_code(c_file_path, function_name):
+    # Regular expression to match function definitions, capturing braces
+    function_regex = re.compile(
+        rf'^\s*[a-zA-Z_]\w*\s+{function_name}\s*\([^)]*\)\s*' + r'{[^{}]*({[^{}]*}[^{}]*)*}', re.MULTILINE)
+
+    with open(c_file_path, 'r') as file:
+        c_code = file.read()
+    
+    # Find the function by name
+    match = function_regex.search(c_code)
+    if match:
+        return match.group()
+    else:
+        return None
+    
+def extract_c_blocks(llm_response):
+    """
+    Extracts all C code blocks from the LLM response.
+    Returns a list of (mutant_name, code) tuples.
+    """
+    mutants = []
+    # Updated regex to match names like Mutant_Arithmatic, Mutant_Relational, etc.
+    pattern = r'(Mutant_[A-Za-z0-9_]+.*?)(```c(.*?)```)'  # Non-greedy match
+    for match in re.finditer(pattern, llm_response, re.DOTALL | re.IGNORECASE):
+        header = match.group(1)
+        code = match.group(3).strip()
+        # Extract mutant name from header
+        mutant_name_match = re.search(r'(Mutant_[A-Za-z0-9_]+)', header, re.IGNORECASE)
+        mutant_name = mutant_name_match.group(1).lower() if mutant_name_match else "mutant_gpt_mini"
+        mutants.append((mutant_name, code))
+
+    return mutants
+
+def write_and_compile(app, mutants):
+    report = []
+    out_dir = os.path.join("gpt_mutants", app.workspace_entry.get())
+    os.makedirs(out_dir, exist_ok=True)
+    for mutant_name, code in mutants:
+        filename = os.path.join(out_dir, f"{mutant_name}.c")
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(code)
+            f.write('\n')
+    
 def show_scrollable_dropdown(app, values):
     """Show a scrollable dropdown menu in a popup window."""
     popup = ctk.CTkToplevel()

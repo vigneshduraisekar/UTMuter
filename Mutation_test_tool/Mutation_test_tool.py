@@ -46,6 +46,8 @@ ctk.deactivate_automatic_dpi_awareness()
 
 # Define App
 # ********************************************************************************
+
+    
 class ConfigToolApp:
     """
     vNP Configuration Tool Class
