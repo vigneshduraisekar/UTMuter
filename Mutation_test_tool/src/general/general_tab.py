@@ -17,9 +17,12 @@ from openai import OpenAI
 
 import customtkinter as ctk
 import re
+import shutil
 import os
 from pathlib import Path
+from bs4 import BeautifulSoup
 from src.utilities.messagebox_helper import SimpleErrorMessage
+from src.utilities.messagebox_helper import SimpleSuccessMessage
 from src.utilities.messagebox_helper import SimpleWarnMessage
 from src.utilities.validation_helper import validate_folder
 from src.utilities.widget_helper import FolderEntry
@@ -207,7 +210,7 @@ def add_generatemutant_panel(app):
     ToolTip(app.mutanttype_option, "Select Mutant type for which code to be generated")
 
     Execute_button = ctk.CTkButton(generatemutant_panel, text="Execute Test Suite")
-    Execute_button.configure(command=lambda: select_path(app, app.cfile_entry))
+    Execute_button.configure(command=lambda: Execute_test(app))
     Execute_button.grid(row=1, column=4, padx=5, pady=5, sticky=tk.EW)
 
 # Create Logging Panel
@@ -242,6 +245,7 @@ def logging_panel(app):
     app.livemutant.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
     ToolTip(app.livemutant, "Count of live mutants after test execution")
 
+
     # Killed Mutant count
     # ********************************************************************************
     WidgetLabel(
@@ -268,9 +272,11 @@ def logging_panel(app):
     app.killedmutant.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
     ToolTip(app.killedmutant, "Mutation score after test execution")
 
+    
+
 
     openlog_button = ctk.CTkButton(log_label, text="Open log file")
-    openlog_button.configure(command=lambda: select_path(app, app.cfile_entry))
+    openlog_button.configure(command=lambda: open_log(app))
     openlog_button.grid(row=1, column=2, padx=5, pady=5, sticky=tk.EW)
 
 # Create Logging Panel
@@ -440,9 +446,8 @@ def gen_mutant(app):
     user_prompt = f"""
     Generate specific mutation variants of this C function by changing ONLY ONE operator at a time.
     For each mutation:
-    1. Give it a name (Mutant_Arithmatic, Mutant_Relational, etc.)
+    1. Give it a name (Mutant_falsereturn, Mutant_negative_return etc.)
     2. Show the complete function with the mutation highlighted or commented
-    3. Explain how the mutation changes the behavior
 
     Target these operators for mutation:
     - {select_operator}
@@ -458,6 +463,121 @@ def gen_mutant(app):
 
     # Write  mutants
     report = write_and_compile(app, mutants)
+
+def Execute_test(app):
+    select_operator = app.mutant_type_option.get()
+    c_file_path= app.cfile_entry.get()
+    folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+    if os.path.isdir(folder_path):
+        with open(c_file_path, 'w') as dest_file:
+            for file_name in os.listdir(folder_path):
+                if file_name.endswith('.c'):
+                    file_path = os.path.join(folder_path, file_name)
+                    with open(file_path, 'r') as src_file:
+                        content = src_file.read()
+                        dest_file.write(f"// From file: {file_name}\n")
+                        dest_file.write(content + "\n\n")
+
+                        #### Add code to execute test by loading cantata workspace #####
+
+                        cantata_dir = os.path.dirname(c_file_path)
+
+                        # Build the source path of test_report.html
+                        report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
+
+                        report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
+
+                        # Copy the file
+                        shutil.copyfile(report_src, report_dest)
+
+                        ####Move below code to outside for loop####
+
+                        # with open(report_dest, "r", encoding="utf-8") as file:
+                        #     soup = BeautifulSoup(file, 'html.parser')
+
+                        # # Extract all rows from tables
+                        # rows = soup.find_all('tr')
+
+                        # # Target keys to extract
+                        # keys_to_find = {
+                        #     "Total number of test cases": None,
+                        #     "Test cases passed": None,
+                        #     "Test cases failed": None
+                        # }
+
+                        # # Loop through rows and look for the desired labels
+                        # for row in rows:
+                        #     cols = row.find_all(['td', 'th'])
+                        #     if len(cols) >= 2:
+                        #         label = cols[0].get_text(strip=True)
+                        #         value = cols[1].get_text(strip=True)
+                        #         if label in keys_to_find and keys_to_find[label] is None:
+                        #             keys_to_find[label] = value
+
+                        #     if all(value is not None for value in keys_to_find.values()):
+                        #         break
+
+                        # if int(keys_to_find["Test cases failed"]) !=0:
+                        #     app.killedmutant.insert(0, "1")
+                        #     app.livemutant.insert(0, "0")
+                        # else:
+                        #     app.killedmutant.insert(0, "0")
+                        #     app.livemutant.insert(0, "1")
+
+def open_log(app):
+    fields_to_extract = [
+    "Summary status",
+    "Total number of test cases",
+    "Test cases passed",
+    "Test cases failed",
+    "Checks passed",
+    "Checks failed"
+    ]
+
+    # Consolidated results list
+    consolidated_data = []
+    folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+    for root, dirs, files in os.walk(folder_path):
+        for file in files:
+            if file.endswith("test_report.html"):
+                file_path = os.path.join(root, file)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    soup = BeautifulSoup(f, "html.parser")
+
+                # Extract info
+                data = {"File": os.path.relpath(file_path, folder_path)}
+                for row in soup.find_all("tr"):
+                    cols = row.find_all(["td", "th"])
+                    if len(cols) >= 2:
+                        key = cols[0].get_text(strip=True)
+                        val = cols[1].get_text(strip=True)
+                        if key in fields_to_extract:
+                            data[key] = val
+                consolidated_data.append(data)
+
+    # Generate HTML table
+    output_html = "<html><head><title>Consolidated Test Report</title></head><body>"
+    output_html += "<h2>Consolidated Test Report</h2><table border='1' cellpadding='5'><tr><th>File</th>"
+
+    # Add headers
+    for field in fields_to_extract:
+        output_html += f"<th>{field}</th>"
+    output_html += "</tr>"
+
+    # Add rows
+    for entry in consolidated_data:
+        output_html += "<tr>"
+        output_html += f"<td>{entry.get('File', '')}</td>"
+        for field in fields_to_extract:
+            output_html += f"<td>{entry.get(field, '')}</td>"
+        output_html += "</tr>"
+
+    output_html += "</table></body></html>"
+
+    # Save consolidated report
+    output_file = os.path.join(folder_path, "consolidated_report.html")
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(output_html)
 
 def extract_function_code(c_file_path, function_name):
     # Regular expression to match function definitions, capturing braces
@@ -494,13 +614,26 @@ def extract_c_blocks(llm_response):
 
 def write_and_compile(app, mutants):
     report = []
-    out_dir = os.path.join("gpt_mutants", app.workspace_entry.get())
-    os.makedirs(out_dir, exist_ok=True)
+    full_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+    os.makedirs(full_path, exist_ok=True)
     for mutant_name, code in mutants:
-        filename = os.path.join(out_dir, f"{mutant_name}.c")
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(code)
-            f.write('\n')
+        dest_path = os.path.join(full_path, mutant_name + ".c")
+        shutil.copyfile(app.cfile_entry.get(), dest_path)
+        with open(dest_path, 'r') as file:
+            content = file.read()
+
+        modified_content = replace_function_body(content, app.function_option.get(), code)
+
+        with open(dest_path, 'w') as file:
+            file.write(modified_content)
+
+    if len(mutants)>0:
+        SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated ")
+
+def replace_function_body(code, func_name, new_function_def):
+    pattern = rf'\b\S+\s+{func_name}\s*\([^)]*\)\s*\{{.*?\}}'
+    new_code = re.sub(pattern, new_function_def, code, flags=re.DOTALL)
+    return new_code
     
 def show_scrollable_dropdown(app, values):
     """Show a scrollable dropdown menu in a popup window."""
