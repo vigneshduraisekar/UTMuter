@@ -18,6 +18,7 @@ from openai import OpenAI
 import customtkinter as ctk
 import re
 import shutil
+import subprocess
 import os
 from pathlib import Path
 from bs4 import BeautifulSoup
@@ -166,21 +167,21 @@ def add_generatemutant_panel(app):
     ToolTip(app.function_option, "Select function for which code to be generated")
 
     #Select the Mutant type
-    WidgetLabel(
-        generatemutant_panel, text="Mutant Type:", anchor=tk.E, row=0, column=2,
-        tooltip="Select function for which code to be generated",
-    )
+    # WidgetLabel(
+    #     generatemutant_panel, text="Mutant Type:", anchor=tk.E, row=0, column=2,
+    #     tooltip="Select function for which code to be generated",
+    # )
 
-    app.mutant_type_option = ctk.CTkOptionMenu(
-        generatemutant_panel,
-        values=["All","Relational Operator", "Logical Operator", "Arithmetic Operator", "Off by One error", "Return value Change", "Assignment error",
-                "Break semantics", "Control Flow Alteration", "Value change", "Wrong Variable Use", "Pointer Arithmetic", "Null Bugs"])
-    app.mutant_type_option.grid(row=0, column=3, padx=5, pady=5, sticky=tk.EW)
-    ToolTip(app.mutant_type_option, "Select Mutant type for which code to be generated")
+    # app.mutant_type_option = ctk.CTkOptionMenu(
+    #     generatemutant_panel,
+    #     values=["All","Relational Operator", "Logical Operator", "Arithmetic Operator", "Off by One error", "Return value Change", "Assignment error",
+    #             "Break semantics", "Control Flow Alteration", "Value change", "Wrong Variable Use", "Pointer Arithmetic", "Null Bugs"])
+    # app.mutant_type_option.grid(row=0, column=3, padx=5, pady=5, sticky=tk.EW)
+    # ToolTip(app.mutant_type_option, "Select Mutant type for which code to be generated")
 
     Gen_button = ctk.CTkButton(generatemutant_panel, text="Generate Mutant")
     Gen_button.configure(command=lambda: gen_mutant(app))
-    Gen_button.grid(row=0, column=4, padx=5, pady=5, sticky=tk.EW)
+    Gen_button.grid(row=0, column=3, padx=5, pady=5, sticky=tk.EW)
 
      # Mutants test execution Widget
     # ********************************************************************************
@@ -197,21 +198,21 @@ def add_generatemutant_panel(app):
     app.fctn_option.grid(row=1, column=1, padx=5, pady=5, sticky=tk.EW)
     ToolTip(app.fctn_option, "Select Function for which code to be generated")
 
-    WidgetLabel(
-        generatemutant_panel, text="Mutant Type:", anchor=tk.E, row=1, column=2,
-        tooltip="Select Mutant type for which code to be generated",
-    )
+    # WidgetLabel(
+    #     generatemutant_panel, text="Mutant Type:", anchor=tk.E, row=1, column=2,
+    #     tooltip="Select Mutant type for which code to be generated",
+    # )
 
-    app.mutanttype_option = ctk.CTkOptionMenu(
-        generatemutant_panel,
-        values=["All","Relational Operator", "Logical Operator", "Arithmetic Operator", "Off by One error", "Return value Change", "Assignment error",
-                "Break semantics", "Control Flow Alteration", "Value change", "Wrong Variable Use", "Pointer Arithmetic", "Null Bugs"])
-    app.mutanttype_option.grid(row=1, column=3, padx=5, pady=5, sticky=tk.EW)
-    ToolTip(app.mutanttype_option, "Select Mutant type for which code to be generated")
+    # app.mutanttype_option = ctk.CTkOptionMenu(
+    #     generatemutant_panel,
+    #     values=["All","Relational Operator", "Logical Operator", "Arithmetic Operator", "Off by One error", "Return value Change", "Assignment error",
+    #             "Break semantics", "Control Flow Alteration", "Value change", "Wrong Variable Use", "Pointer Arithmetic", "Null Bugs"])
+    # app.mutanttype_option.grid(row=1, column=3, padx=5, pady=5, sticky=tk.EW)
+    # ToolTip(app.mutanttype_option, "Select Mutant type for which code to be generated")
 
     Execute_button = ctk.CTkButton(generatemutant_panel, text="Execute Test Suite")
     Execute_button.configure(command=lambda: Execute_test(app))
-    Execute_button.grid(row=1, column=4, padx=5, pady=5, sticky=tk.EW)
+    Execute_button.grid(row=1, column=3, padx=5, pady=5, sticky=tk.EW)
 
 # Create Logging Panel
 ####################################################################################################
@@ -436,10 +437,19 @@ def validate_file(app, path):
 # Callback Function to generate mutant and save the c file
 ####################################################################################################
 def gen_mutant(app):
-    obj = llmfarminf()
-    select_operator = app.mutant_type_option.get()
+    # select_operator = app.mutant_type_option.get()
     function_name = app.function_option.get()
     c_file_path= app.cfile_entry.get()
+    if function_name == "All":
+        function_list = app.function_option.cget("values")
+        #loop thru each function and generate mutant
+        for function_name in function_list[1:]:
+            prompt_and_gen_mutant(app, function_name, c_file_path)        
+    else:
+        prompt_and_gen_mutant(app, function_name, c_file_path)
+
+
+def prompt_and_gen_mutant(app, function_name, c_file_path):
     c_function_code = extract_function_code(c_file_path, function_name)
 
     system_prompt = "You are a programming expert with focus on mutation testing."
@@ -449,12 +459,13 @@ def gen_mutant(app):
     1. Give it a name (Mutant_falsereturn, Mutant_negative_return etc.)
     2. Show the complete function with the mutation highlighted or commented
 
-    Target these operators for mutation:
-    - {select_operator}
-     generate all possible mutants combination by changing only one {select_operator} at a time
+    Target all operators for mutation:
+    
+    generate all potential mutants combination by changing only one at a time
 
     {c_function_code}
     """
+    obj = llmfarminf()
 
     # Get the response
     response = obj._completion(user_prompt, system_prompt)
@@ -462,67 +473,124 @@ def gen_mutant(app):
     mutants = extract_c_blocks(response)
 
     # Write  mutants
-    report = write_and_compile(app, mutants)
+    report = write_and_compile(app, mutants, function_name)
+
 
 def Execute_test(app):
-    select_operator = app.mutant_type_option.get()
+    # select_operator = app.mutant_type_option.get()
     c_file_path= app.cfile_entry.get()
-    folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+    if app.fctn_option.get() == "All":
+        folder_path = app.workspace_entry.get()
+    else:
+        folder_path = os.path.join(app.workspace_entry.get(), app.fctn_option.get())
     if os.path.isdir(folder_path):
-        with open(c_file_path, 'w') as dest_file:
+        if app.fctn_option.get() == "All":
+            #Loop thru each sub folder and replace the c file in WS
+            for subfolder in os.listdir(folder_path):
+                subfolder_path = os.path.join(folder_path, subfolder)
+                # Proceed if the item is a directory
+                if os.path.isdir(subfolder_path):
+                    # Iterate over each file in the subfolder
+                    for file_name in os.listdir(subfolder_path):
+                        if file_name.endswith('.c'):
+                            file_path = os.path.join(subfolder_path, file_name)
+                            # Read the .c file and write it to the destination file
+                            with open(c_file_path, 'w') as dest_file:
+                                with open(file_path, 'r') as src_file:
+                                    content = src_file.read()
+                                    dest_file.write(f"// From file: {file_name}\n")
+                                    dest_file.write(content + "\n\n")
+                            execute_test_cantata_cli(c_file_path)
+                            # Copy the report from cantata WS to our WS folder
+                            cantata_dir = os.path.dirname(c_file_path)
+                            report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
+
+                            report_dest = os.path.join(subfolder_path, file_name[:-2] +'test_report.html')
+
+                            # Copy the report from cantata WS to our WS folder
+                            shutil.copyfile(report_src, report_dest)
+        else:
+            # Directly check the files in the single folder
             for file_name in os.listdir(folder_path):
                 if file_name.endswith('.c'):
                     file_path = os.path.join(folder_path, file_name)
-                    with open(file_path, 'r') as src_file:
-                        content = src_file.read()
-                        dest_file.write(f"// From file: {file_name}\n")
-                        dest_file.write(content + "\n\n")
+                    # Read the .c file and write it to the destination file
+                    with open(c_file_path, 'w') as dest_file:
+                        with open(file_path, 'r') as src_file:
+                            content = src_file.read()
+                            dest_file.write(f"// From file: {file_name}\n")
+                            dest_file.write(content + "\n\n")
 
-                        #### Add code to execute test by loading cantata workspace #####
+                    execute_test_cantata_cli(c_file_path)
+                        
+                    # Copy the report from cantata WS to our WS folder
+                    cantata_dir = os.path.dirname(c_file_path)
+                    report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
 
-                        cantata_dir = os.path.dirname(c_file_path)
+                    report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
 
-                        # Build the source path of test_report.html
-                        report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
+                    # Copy the report from cantata WS to our WS folder
+                    shutil.copyfile(report_src, report_dest)
 
-                        report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
+                            ####Move below code to outside for loop####
 
-                        # Copy the file
-                        shutil.copyfile(report_src, report_dest)
+                            # with open(report_dest, "r", encoding="utf-8") as file:
+                            #     soup = BeautifulSoup(file, 'html.parser')
 
-                        ####Move below code to outside for loop####
+                            # # Extract all rows from tables
+                            # rows = soup.find_all('tr')
 
-                        # with open(report_dest, "r", encoding="utf-8") as file:
-                        #     soup = BeautifulSoup(file, 'html.parser')
+                            # # Target keys to extract
+                            # keys_to_find = {
+                            #     "Total number of test cases": None,
+                            #     "Test cases passed": None,
+                            #     "Test cases failed": None
+                            # }
 
-                        # # Extract all rows from tables
-                        # rows = soup.find_all('tr')
+                            # # Loop through rows and look for the desired labels
+                            # for row in rows:
+                            #     cols = row.find_all(['td', 'th'])
+                            #     if len(cols) >= 2:
+                            #         label = cols[0].get_text(strip=True)
+                            #         value = cols[1].get_text(strip=True)
+                            #         if label in keys_to_find and keys_to_find[label] is None:
+                            #             keys_to_find[label] = value
 
-                        # # Target keys to extract
-                        # keys_to_find = {
-                        #     "Total number of test cases": None,
-                        #     "Test cases passed": None,
-                        #     "Test cases failed": None
-                        # }
+                            #     if all(value is not None for value in keys_to_find.values()):
+                            #         break
 
-                        # # Loop through rows and look for the desired labels
-                        # for row in rows:
-                        #     cols = row.find_all(['td', 'th'])
-                        #     if len(cols) >= 2:
-                        #         label = cols[0].get_text(strip=True)
-                        #         value = cols[1].get_text(strip=True)
-                        #         if label in keys_to_find and keys_to_find[label] is None:
-                        #             keys_to_find[label] = value
+                            # if int(keys_to_find["Test cases failed"]) !=0:
+                            #     app.killedmutant.insert(0, "1")
+                            #     app.livemutant.insert(0, "0")
+                            # else:
+                            #     app.killedmutant.insert(0, "0")
+                            #     app.livemutant.insert(0, "1")
+def execute_test_cantata_cli(c_file_path):
+    #Start Cantata CLI
+    # cmd = 'texec -useEnv:%TBC_BASECFG% %UBK_PRODUCT%/%UBK_PRODUCT_VERSION%'
+    cmd = 'texec -useEnv:ae.be aeee_pro/2017.1.2'
+    subprocess.run(cmd, shell=True)
 
-                        #     if all(value is not None for value in keys_to_find.values()):
-                        #         break
+    # Goto Cantat workspace path
+    cantata_dir = os.path.dirname(c_file_path)
+    test_dir = os.path.join(cantata_dir, 'Cantata', 'tests')
+    test_dir = os.path.normpath(test_dir)
+    subprocess.run("dir", shell=True, cwd=test_dir)
 
-                        # if int(keys_to_find["Test cases failed"]) !=0:
-                        #     app.killedmutant.insert(0, "1")
-                        #     app.livemutant.insert(0, "0")
-                        # else:
-                        #     app.killedmutant.insert(0, "0")
-                        #     app.livemutant.insert(0, "1")
+    #Execute the tests
+    clean_cmd = 'make clean && make all EXECUTE=1 OUTPUT_TO_CONSOLE=1'
+    subprocess.run(clean_cmd, shell=True)
+
+    # Generate Report
+    workspace_path = 'set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace'
+    subprocess.run(workspace_path, shell=True)
+
+    # Set project path
+    # project_path = 'set PROJECT_PATH=C:\Work\MyDocs\Hackathon\Repo\Net_MonitoringClasses_UT\Net_MonitoringClasses'
+    # subprocess.run(project_path, shell=True)
+
+    report_gen = 'aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT'
+    subprocess.run(report_gen, shell=True)
 
 def open_log(app):
     fields_to_extract = [
@@ -612,9 +680,9 @@ def extract_c_blocks(llm_response):
 
     return mutants
 
-def write_and_compile(app, mutants):
+def write_and_compile(app, mutants, function_name):
     report = []
-    full_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+    full_path = os.path.join(app.workspace_entry.get(), function_name)
     os.makedirs(full_path, exist_ok=True)
     for mutant_name, code in mutants:
         dest_path = os.path.join(full_path, mutant_name + ".c")
@@ -622,13 +690,13 @@ def write_and_compile(app, mutants):
         with open(dest_path, 'r') as file:
             content = file.read()
 
-        modified_content = replace_function_body(content, app.function_option.get(), code)
+        modified_content = replace_function_body(content, function_name, code)
 
         with open(dest_path, 'w') as file:
             file.write(modified_content)
 
-    if len(mutants)>0:
-        SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated ")
+    # if len(mutants)>0:
+    #     SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated for function {function_name}")
 
 def replace_function_body(code, func_name, new_function_def):
     pattern = rf'\b\S+\s+{func_name}\s*\([^)]*\)\s*\{{.*?\}}'
