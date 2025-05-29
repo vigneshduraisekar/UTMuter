@@ -20,6 +20,7 @@ import re
 import shutil
 import subprocess
 import os
+import time
 from pathlib import Path
 from bs4 import BeautifulSoup
 from src.utilities.messagebox_helper import SimpleErrorMessage
@@ -267,18 +268,24 @@ def logging_panel(app):
         tooltip="Mutation score after test execution",
     )
 
-    app.killedmutant = ctk.CTkEntry(log_label, placeholder_text="score value...")
-    app.killedmutant.bind("<Return>", lambda event: app.window.focus_set())
-    app.killedmutant.configure(validate="focusout", validatecommand=lambda: validate_int(app, app.killedmutant))
-    app.killedmutant.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
-    ToolTip(app.killedmutant, "Mutation score after test execution")
+    app.mutantscore = ctk.CTkEntry(log_label, placeholder_text="score value...")
+    app.mutantscore.bind("<Return>", lambda event: app.window.focus_set())
+    app.mutantscore.configure(validate="focusout", validatecommand=lambda: validate_int(app, app.mutantscore))
+    app.mutantscore.grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
+    ToolTip(app.mutantscore, "Mutation score after test execution")
 
-    
+    createlog_button = ctk.CTkButton(log_label, text="Create report file")
+    createlog_button.configure(command=lambda: create_log(app))
+    createlog_button.grid(row=0, column=2, padx=5, pady=5, sticky=tk.EW)
+
+    calc_score_button = ctk.CTkButton(log_label, text="Calculate mutant score")
+    calc_score_button.configure(command=lambda: calc_score(app))
+    calc_score_button.grid(row=1, column=2, padx=5, pady=5, sticky=tk.EW)
 
 
-    openlog_button = ctk.CTkButton(log_label, text="Open log file")
+    openlog_button = ctk.CTkButton(log_label, text="Open report")
     openlog_button.configure(command=lambda: open_log(app))
-    openlog_button.grid(row=1, column=2, padx=5, pady=5, sticky=tk.EW)
+    openlog_button.grid(row=2, column=2, padx=5, pady=5, sticky=tk.EW)
 
 # Create Logging Panel
 ####################################################################################################
@@ -452,17 +459,32 @@ def gen_mutant(app):
 def prompt_and_gen_mutant(app, function_name, c_file_path):
     c_function_code = extract_function_code(c_file_path, function_name)
 
-    system_prompt = "You are a programming expert with focus on mutation testing."
+    system_prompt = "You are a programming expert specializing in mutation testing for C code."
+ 
     user_prompt = f"""
-    Generate specific mutation variants of this C function by changing ONLY ONE operator at a time.
-    For each mutation:
-    1. Give it a name (Mutant_falsereturn, Mutant_negative_return etc.)
-    2. Show the complete function with the mutation highlighted or commented
-
-    Target all operators for mutation:
+    Given the following C function, analyze the code and identify all potential mutation points where a single operator, logical construct, or assignment can be changed to create a meaningful mutant.
     
-    generate all potential mutants combination by changing only one at a time
-
+    For each mutation point:
+    1. Generate a mutant by changing ONLY ONE operator or logic at that point (e.g., + to -, == to !=, && to ||, > to >=, etc.).
+    2. Give each mutant a unique, descriptive name (e.g., Mutant_GreaterToLess, Mutant_AndToOr, Mutant_IncrementToDecrement).
+    3. Show the complete mutated function as a C code block, with the mutation clearly highlighted or commented (e.g., // MUTATION: changed >= to >).
+    4. Briefly explain how this mutation changes the function's behavior.
+    
+    **Guidelines:**
+    - Only one mutation per mutant.
+    - Do not change variable names or function signatures.
+    - Do not introduce syntax errors.
+    - Do not generate redundant mutants (e.g., do not mutate the same operator in the same way more than once).
+    - Focus on these mutation types:
+        - Arithmetic operators: +, -, *, /, %, ++, --
+        - Relational operators: <, <=, >, >=, ==, !=
+        - Logical operators: &&, ||, !
+        - Assignment operators: =, +=, -=, *=, /=, %=
+        - Return value changes (e.g., change return true to return false)
+        - Control flow changes (e.g., invert a condition)
+    
+    Original function:
+    ```c
     {c_function_code}
     """
     obj = llmfarminf()
@@ -525,70 +547,48 @@ def Execute_test(app):
                         
                     # Copy the report from cantata WS to our WS folder
                     cantata_dir = os.path.dirname(c_file_path)
-                    report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
+                    report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'Cantata Output', 'test_report.html')
 
                     report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
 
                     # Copy the report from cantata WS to our WS folder
                     shutil.copyfile(report_src, report_dest)
 
-                            ####Move below code to outside for loop####
+def execute_command(command, keep_window_open=False):
+    # Use subprocess.run() to wait for the command to finish
+    shell_command = '/k' if keep_window_open else '/c'
+    process = subprocess.run(['cmd.exe', shell_command, command], creationflags=subprocess.CREATE_NEW_CONSOLE)
+    return process.returncode
 
-                            # with open(report_dest, "r", encoding="utf-8") as file:
-                            #     soup = BeautifulSoup(file, 'html.parser')
-
-                            # # Extract all rows from tables
-                            # rows = soup.find_all('tr')
-
-                            # # Target keys to extract
-                            # keys_to_find = {
-                            #     "Total number of test cases": None,
-                            #     "Test cases passed": None,
-                            #     "Test cases failed": None
-                            # }
-
-                            # # Loop through rows and look for the desired labels
-                            # for row in rows:
-                            #     cols = row.find_all(['td', 'th'])
-                            #     if len(cols) >= 2:
-                            #         label = cols[0].get_text(strip=True)
-                            #         value = cols[1].get_text(strip=True)
-                            #         if label in keys_to_find and keys_to_find[label] is None:
-                            #             keys_to_find[label] = value
-
-                            #     if all(value is not None for value in keys_to_find.values()):
-                            #         break
-
-                            # if int(keys_to_find["Test cases failed"]) !=0:
-                            #     app.killedmutant.insert(0, "1")
-                            #     app.livemutant.insert(0, "0")
-                            # else:
-                            #     app.killedmutant.insert(0, "0")
-                            #     app.livemutant.insert(0, "1")
 def execute_test_cantata_cli(c_file_path):
-    def run_cmd_in_window():
+    def run_cmd_in_window(retry_interval = 5):
     # Define the test directory using a raw string
         cantata_dir = os.path.dirname(c_file_path)
         test_dir = os.path.join(cantata_dir, 'Cantata', 'tests')
         test_dir = os.path.normpath(test_dir)
         # test_dir = r"C:\Work\MyDocs\Hackathon\Repo\Net_MonitoringClasses_UT\Net_MonitoringClasses\Cantata\tests"
 
-        # Combine all commands into a single string for sequential execution
-        full_command = (
+        pre_build_command = (
             f"cd {test_dir} && "
             "texec -useEnv:ae.be aeee_pro/2017.1.2 && "
             "make clean && "
-            "make all EXECUTE=1 OUTPUT_TO_CONSOLE=1 && "
+            "make all EXECUTE=1 OUTPUT_TO_CONSOLE=1 "
+        )
+
+        # Execute pre-build commands
+        pre_build_return_code = execute_command(pre_build_command)
+
+        post_build_commands = (
+            f"cd {test_dir} && "
+            "texec -useEnv:ae.be aeee_pro/2017.1.2 && "
             r"set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace && "
             f"set PROJECT_PATH={test_dir} && "
             r"aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT"
         )
 
-        # Create a command list with /k to keep the window open
-        cmd_list = ['cmd.exe', '/k', full_command]
-
-        # Execute combined commands in a new Command Prompt window
-        subprocess.Popen(cmd_list, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        post_build_return_code = execute_command(post_build_commands)
+        if post_build_return_code == 0:
+            a=1
 
     run_cmd_in_window()
 
@@ -599,7 +599,7 @@ def execute_test_cantata_cli(c_file_path):
  
     # run_cmd('aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT')
 
-def open_log(app):
+def create_log(app):
     fields_to_extract = [
     "Summary status",
     "Total number of test cases",
@@ -611,7 +611,8 @@ def open_log(app):
 
     # Consolidated results list
     consolidated_data = []
-    folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+    # folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+    folder_path = app.workspace_entry.get()
     for root, dirs, files in os.walk(folder_path):
         for file in files:
             if file.endswith("test_report.html"):
@@ -653,6 +654,58 @@ def open_log(app):
     output_file = os.path.join(folder_path, "consolidated_report.html")
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(output_html)
+
+    SimpleSuccessMessage(app.window, title="Generate Report window", message=f"Consolidated report generated successfully")
+    
+def calc_score(app):
+    folder_path = app.workspace_entry.get()
+    file_path = os.path.join(folder_path, "consolidated_report.html")
+    with open(file_path, 'r', encoding='utf-8') as file:
+        html_content = file.read()
+
+    # Parse the HTML content with BeautifulSoup
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Find the table containing the report
+    table = soup.find('table')  # Assuming there's only one table in the HTML
+    
+    # Initialize a list to capture the failed test cases from each row
+    failed_tests = []
+    num_rows = 0
+
+    # Iterate over rows in the table, skipping the header
+    for row in table.find_all('tr')[1:]:
+        cols = row.find_all('td')
+        num_rows += 1
+        if len(cols) > 0:
+            # Assuming "Test cases failed" is the 5th column (0-based index 4)
+            test_cases_failed = cols[4].text.strip()
+            failed_tests.append(test_cases_failed)
+
+    live_mutant = failed_tests.count('0')
+    killed_mutant = len(failed_tests) - live_mutant
+    app.killedmutant.delete(0, 'end')
+    app.killedmutant.insert(0, killed_mutant)
+    app.livemutant.delete(0, 'end')
+    app.livemutant.insert(0, live_mutant)
+    score = (killed_mutant/num_rows)*100
+    percentage_score = f"{score:.2f}%"
+    app.mutantscore.delete(0, 'end')
+    app.mutantscore.insert(0,percentage_score)
+
+def open_log(app):
+    folder_path = app.workspace_entry.get()
+    file_path = os.path.join(folder_path, "consolidated_report.html")
+    
+    # Check if the file exists
+    if os.path.exists(file_path):
+        # Open the file using the default web browser
+        os.startfile(file_path)  # This works on Windows to open files with default applications
+        print(f"Opened: {file_path}")
+    else:
+        print(f"File not found: {file_path}")
+
+
 
 def extract_function_code(c_file_path, function_name):
     # Regular expression to match function definitions, capturing braces
@@ -702,8 +755,8 @@ def write_and_compile(app, mutants, function_name):
         with open(dest_path, 'w') as file:
             file.write(modified_content)
 
-    # if len(mutants)>0:
-    #     SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated for function {function_name}")
+    if len(mutants)>0:
+        SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated for function {function_name}")
 
 def replace_function_body(code, func_name, new_function_def):
     pattern = rf'\b\S+\s+{func_name}\s*\([^)]*\)\s*\{{.*?\}}'
