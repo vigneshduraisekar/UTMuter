@@ -566,31 +566,38 @@ def Execute_test(app):
                             #     app.killedmutant.insert(0, "0")
                             #     app.livemutant.insert(0, "1")
 def execute_test_cantata_cli(c_file_path):
-    #Start Cantata CLI
-    # cmd = 'texec -useEnv:%TBC_BASECFG% %UBK_PRODUCT%/%UBK_PRODUCT_VERSION%'
-    cmd = 'texec -useEnv:ae.be aeee_pro/2017.1.2'
-    subprocess.run(cmd, shell=True)
+    def run_cmd_in_window():
+    # Define the test directory using a raw string
+        cantata_dir = os.path.dirname(c_file_path)
+        test_dir = os.path.join(cantata_dir, 'Cantata', 'tests')
+        test_dir = os.path.normpath(test_dir)
+        # test_dir = r"C:\Work\MyDocs\Hackathon\Repo\Net_MonitoringClasses_UT\Net_MonitoringClasses\Cantata\tests"
 
-    # Goto Cantat workspace path
-    cantata_dir = os.path.dirname(c_file_path)
-    test_dir = os.path.join(cantata_dir, 'Cantata', 'tests')
-    test_dir = os.path.normpath(test_dir)
-    subprocess.run("dir", shell=True, cwd=test_dir)
+        # Combine all commands into a single string for sequential execution
+        full_command = (
+            f"cd {test_dir} && "
+            "texec -useEnv:ae.be aeee_pro/2017.1.2 && "
+            "make clean && "
+            "make all EXECUTE=1 OUTPUT_TO_CONSOLE=1 && "
+            r"set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace && "
+            f"set PROJECT_PATH={test_dir} && "
+            r"aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT"
+        )
 
-    #Execute the tests
-    clean_cmd = 'make clean && make all EXECUTE=1 OUTPUT_TO_CONSOLE=1'
-    subprocess.run(clean_cmd, shell=True)
+        # Create a command list with /k to keep the window open
+        cmd_list = ['cmd.exe', '/k', full_command]
 
+        # Execute combined commands in a new Command Prompt window
+        subprocess.Popen(cmd_list, creationflags=subprocess.CREATE_NEW_CONSOLE)
+
+    run_cmd_in_window()
+
+    
+ 
     # Generate Report
-    workspace_path = 'set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace'
-    subprocess.run(workspace_path, shell=True)
-
-    # Set project path
-    # project_path = 'set PROJECT_PATH=C:\Work\MyDocs\Hackathon\Repo\Net_MonitoringClasses_UT\Net_MonitoringClasses'
-    # subprocess.run(project_path, shell=True)
-
-    report_gen = 'aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT'
-    subprocess.run(report_gen, shell=True)
+    # run_cmd('set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace')
+ 
+    # run_cmd('aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT')
 
 def open_log(app):
     fields_to_extract = [
