@@ -21,6 +21,8 @@ import shutil
 import subprocess
 import os
 import time
+import json
+import threading
 from pathlib import Path
 from bs4 import BeautifulSoup
 from src.utilities.messagebox_helper import SimpleErrorMessage
@@ -31,6 +33,42 @@ from src.utilities.widget_helper import FolderEntry
 from src.utilities.widget_helper import StringEntry
 from src.utilities.widget_helper import ToolTip
 from src.utilities.widget_helper import WidgetLabel
+from src.utilities.widget_helper import show_progress_popup
+
+USER_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "../../user_config.json")
+
+def save_gui_state(app):
+    """Save GUI state to JSON file."""
+    data = {
+        "workspace_folder": app.workspace_entry.get(),
+        "last_function": app.function_option.get(),
+        "mutant_type": "",  # Add if you have a mutant type option
+        "cfile_path": app.cfile_entry.get()
+    }
+    with open(USER_CONFIG_PATH, "w") as f:
+        json.dump(data, f)
+
+def load_gui_state(app):
+    """Load GUI state from JSON file."""
+    if os.path.exists(USER_CONFIG_PATH):
+        with open(USER_CONFIG_PATH, "r") as f:
+            try:
+                data = json.load(f)
+            except Exception:
+                return
+        # Set values if present
+        if "workspace_folder" in data:
+            app.workspace_entry.delete(0, tk.END)
+            app.workspace_entry.insert(0, data["workspace_folder"])
+        if "cfile_path" in data:
+            app.cfile_entry.delete(0, tk.END)
+            app.cfile_entry.insert(0, data["cfile_path"])
+        # Validate file to populate function list
+        if "cfile_path" in data and os.path.exists(data["cfile_path"]):
+            validate_file(app, data["cfile_path"])
+        if "last_function" in data and data["last_function"] in app.function_option.cget("values"):
+            app.function_option.set(data["last_function"])
+            app.fctn_option.set(data["last_function"])
 
 class llmfarminf():
     def __init__(self, model = "gpt-4o-mini") -> None:
@@ -75,6 +113,7 @@ def setup_general_tab(app):
     add_generatemutant_panel(app)
     logging_panel(app)
     gen_testsuite(app)
+    load_gui_state(app)
 
 # Create General Panel
 ####################################################################################################
@@ -92,7 +131,6 @@ def add_general_panel(app):
 
     # Configure the grid to use all available space for column 1 (entries)
     general_panel.columnconfigure(1, weight=1)
-
 
     # Workspace Path Widget
     # ********************************************************************************
@@ -195,7 +233,7 @@ def add_generatemutant_panel(app):
     app.fctn_option = ctk.CTkOptionMenu(
         generatemutant_panel,
         values=["All"])
-    
+
     app.fctn_option.grid(row=1, column=1, padx=5, pady=5, sticky=tk.EW)
     ToolTip(app.fctn_option, "Select Function for which code to be generated")
 
@@ -428,7 +466,7 @@ def validate_file(app, path):
 
     with open(path, 'r') as file:
         c_code = file.read()
-    
+
     # Find all function names
     function_names = function_regex.findall(c_code)
     function_names.insert(0, "All")  # Optional: insert "All" at the top
@@ -444,32 +482,35 @@ def validate_file(app, path):
 # Callback Function to generate mutant and save the c file
 ####################################################################################################
 def gen_mutant(app):
-    # select_operator = app.mutant_type_option.get()
-    function_name = app.function_option.get()
-    c_file_path= app.cfile_entry.get()
-    if function_name == "All":
-        function_list = app.function_option.cget("values")
-        #loop thru each function and generate mutant
-        for function_name in function_list[1:]:
-            prompt_and_gen_mutant(app, function_name, c_file_path)        
-    else:
-        prompt_and_gen_mutant(app, function_name, c_file_path)
-
+    popup = show_progress_popup(app, "Generating Mutant...")
+    def task():
+        try:
+            c_file_path = app.cfile_entry.get()
+            function_name = app.function_option.get()
+            if function_name == "All":
+                function_list = app.function_option.cget("values")
+                for function_name in function_list[1:]:
+                    prompt_and_gen_mutant(app, function_name, c_file_path)
+            else:
+                prompt_and_gen_mutant(app, function_name, c_file_path)
+        finally:
+            popup.destroy()
+    threading.Thread(target=task).start()
 
 def prompt_and_gen_mutant(app, function_name, c_file_path):
     c_function_code = extract_function_code(c_file_path, function_name)
 
     system_prompt = "You are a programming expert specializing in mutation testing for C code."
- 
+
     user_prompt = f"""
     Given the following C function, analyze the code and identify all potential mutation points where a single operator, logical construct, or assignment can be changed to create a meaningful mutant.
-    
+
     For each mutation point:
     1. Generate a mutant by changing ONLY ONE operator or logic at that point (e.g., + to -, == to !=, && to ||, > to >=, etc.).
     2. Give each mutant a unique, descriptive name (e.g., Mutant_GreaterToLess, Mutant_AndToOr, Mutant_IncrementToDecrement).
     3. Show the complete mutated function as a C code block, with the mutation clearly highlighted or commented (e.g., // MUTATION: changed >= to >).
     4. Briefly explain how this mutation changes the function's behavior.
-    
+
     **Guidelines:**
     - Only one mutation per mutant.
     - Do not change variable names or function signatures.
@@ -482,7 +523,7 @@ def prompt_and_gen_mutant(app, function_name, c_file_path):
         - Assignment operators: =, +=, -=, *=, /=, %=
         - Return value changes (e.g., change return true to return false)
         - Control flow changes (e.g., invert a condition)
-    
+
     Original function:
     ```c
     {c_function_code}
@@ -499,60 +540,66 @@ def prompt_and_gen_mutant(app, function_name, c_file_path):
 
 
 def Execute_test(app):
-    # select_operator = app.mutant_type_option.get()
-    c_file_path= app.cfile_entry.get()
-    if app.fctn_option.get() == "All":
-        folder_path = app.workspace_entry.get()
-    else:
-        folder_path = os.path.join(app.workspace_entry.get(), app.fctn_option.get())
-    if os.path.isdir(folder_path):
-        if app.fctn_option.get() == "All":
-            #Loop thru each sub folder and replace the c file in WS
-            for subfolder in os.listdir(folder_path):
-                subfolder_path = os.path.join(folder_path, subfolder)
-                # Proceed if the item is a directory
-                if os.path.isdir(subfolder_path):
-                    # Iterate over each file in the subfolder
-                    for file_name in os.listdir(subfolder_path):
+    popup = show_progress_popup(app, "Executing Test Suite...")
+    def task():
+        try:
+            # select_operator = app.mutant_type_option.get()
+            c_file_path= app.cfile_entry.get()
+            if app.fctn_option.get() == "All":
+                folder_path = app.workspace_entry.get()
+            else:
+                folder_path = os.path.join(app.workspace_entry.get(), app.fctn_option.get())
+            if os.path.isdir(folder_path):
+                if app.fctn_option.get() == "All":
+                    #Loop thru each sub folder and replace the c file in WS
+                    for subfolder in os.listdir(folder_path):
+                        subfolder_path = os.path.join(folder_path, subfolder)
+                        # Proceed if the item is a directory
+                        if os.path.isdir(subfolder_path):
+                            # Iterate over each file in the subfolder
+                            for file_name in os.listdir(subfolder_path):
+                                if file_name.endswith('.c'):
+                                    file_path = os.path.join(subfolder_path, file_name)
+                                    # Read the .c file and write it to the destination file
+                                    with open(c_file_path, 'w') as dest_file:
+                                        with open(file_path, 'r') as src_file:
+                                            content = src_file.read()
+                                            dest_file.write(f"// From file: {file_name}\n")
+                                            dest_file.write(content + "\n\n")
+                                    execute_test_cantata_cli(c_file_path)
+                                    # Copy the report from cantata WS to our WS folder
+                                    cantata_dir = os.path.dirname(c_file_path)
+                                    report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
+
+                                    report_dest = os.path.join(subfolder_path, file_name[:-2] +'test_report.html')
+
+                                    # Copy the report from cantata WS to our WS folder
+                                    shutil.copyfile(report_src, report_dest)
+                else:
+                    # Directly check the files in the single folder
+                    for file_name in os.listdir(folder_path):
                         if file_name.endswith('.c'):
-                            file_path = os.path.join(subfolder_path, file_name)
+                            file_path = os.path.join(folder_path, file_name)
                             # Read the .c file and write it to the destination file
                             with open(c_file_path, 'w') as dest_file:
                                 with open(file_path, 'r') as src_file:
                                     content = src_file.read()
                                     dest_file.write(f"// From file: {file_name}\n")
                                     dest_file.write(content + "\n\n")
+
                             execute_test_cantata_cli(c_file_path)
+
                             # Copy the report from cantata WS to our WS folder
                             cantata_dir = os.path.dirname(c_file_path)
-                            report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
+                            report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'Cantata Output', 'test_report.html')
 
-                            report_dest = os.path.join(subfolder_path, file_name[:-2] +'test_report.html')
+                            report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
 
                             # Copy the report from cantata WS to our WS folder
                             shutil.copyfile(report_src, report_dest)
-        else:
-            # Directly check the files in the single folder
-            for file_name in os.listdir(folder_path):
-                if file_name.endswith('.c'):
-                    file_path = os.path.join(folder_path, file_name)
-                    # Read the .c file and write it to the destination file
-                    with open(c_file_path, 'w') as dest_file:
-                        with open(file_path, 'r') as src_file:
-                            content = src_file.read()
-                            dest_file.write(f"// From file: {file_name}\n")
-                            dest_file.write(content + "\n\n")
-
-                    execute_test_cantata_cli(c_file_path)
-                        
-                    # Copy the report from cantata WS to our WS folder
-                    cantata_dir = os.path.dirname(c_file_path)
-                    report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'Cantata Output', 'test_report.html')
-
-                    report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
-
-                    # Copy the report from cantata WS to our WS folder
-                    shutil.copyfile(report_src, report_dest)
+        finally:
+            popup.destroy()
+    threading.Thread(target=task).start()
 
 def execute_command(command, keep_window_open=False):
     # Use subprocess.run() to wait for the command to finish
@@ -592,11 +639,11 @@ def execute_test_cantata_cli(c_file_path):
 
     run_cmd_in_window()
 
-    
- 
+
+
     # Generate Report
     # run_cmd('set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace')
- 
+
     # run_cmd('aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT')
 
 def create_log(app):
@@ -656,7 +703,7 @@ def create_log(app):
         f.write(output_html)
 
     SimpleSuccessMessage(app.window, title="Generate Report window", message=f"Consolidated report generated successfully")
-    
+
 def calc_score(app):
     folder_path = app.workspace_entry.get()
     file_path = os.path.join(folder_path, "consolidated_report.html")
@@ -665,10 +712,10 @@ def calc_score(app):
 
     # Parse the HTML content with BeautifulSoup
     soup = BeautifulSoup(html_content, 'html.parser')
-    
+
     # Find the table containing the report
     table = soup.find('table')  # Assuming there's only one table in the HTML
-    
+
     # Initialize a list to capture the failed test cases from each row
     failed_tests = []
     num_rows = 0
@@ -696,7 +743,7 @@ def calc_score(app):
 def open_log(app):
     folder_path = app.workspace_entry.get()
     file_path = os.path.join(folder_path, "consolidated_report.html")
-    
+
     # Check if the file exists
     if os.path.exists(file_path):
         # Open the file using the default web browser
@@ -714,14 +761,14 @@ def extract_function_code(c_file_path, function_name):
 
     with open(c_file_path, 'r') as file:
         c_code = file.read()
-    
+
     # Find the function by name
     match = function_regex.search(c_code)
     if match:
         return match.group()
     else:
         return None
-    
+
 def extract_c_blocks(llm_response):
     """
     Extracts all C code blocks from the LLM response.
@@ -762,7 +809,7 @@ def replace_function_body(code, func_name, new_function_def):
     pattern = rf'\b\S+\s+{func_name}\s*\([^)]*\)\s*\{{.*?\}}'
     new_code = re.sub(pattern, new_function_def, code, flags=re.DOTALL)
     return new_code
-    
+
 def show_scrollable_dropdown(app, values):
     """Show a scrollable dropdown menu in a popup window."""
     popup = ctk.CTkToplevel()

@@ -108,3 +108,21 @@ class FolderEntry(BaseEntry):
         Initialize the FolderEntry with the provided parameters
         """
         super().__init__(app, master, placeholder, description, row, column, columnspan, padx, pady, sticky, tooltip, width, validatecommand=lambda: validate_folder(app, self, folder_present), **kwargs)
+
+def show_progress_popup(app, message="Processing..."):
+    """
+    Show a modal progress bar popup. Returns the popup window.
+    Call popup.destroy() to close it when the operation is done.
+    """
+    popup = ctk.CTkToplevel(app.window)
+    popup.title("Please Wait")
+    popup.geometry("350x100")
+    popup.resizable(False, False)
+    popup.grab_set()
+    label = ctk.CTkLabel(popup, text=message)
+    label.pack(pady=10)
+    progress = ctk.CTkProgressBar(popup, orientation="horizontal", mode="indeterminate")
+    progress.pack(fill=tk.X, padx=20, pady=10)
+    progress.start()
+    return popup
+

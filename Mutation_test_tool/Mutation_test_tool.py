@@ -47,7 +47,7 @@ ctk.deactivate_automatic_dpi_awareness()
 # Define App
 # ********************************************************************************
 
-    
+
 class ConfigToolApp:
     """
     vNP Configuration Tool Class
@@ -102,6 +102,24 @@ class ConfigToolApp:
         self.window.iconbitmap(icon_path)
         self.window.data = "unblocked"
 
+        # Add menu bar for config save/load
+        self._add_menu_bar()
+
+    def _add_menu_bar(self):
+        menubar = tk.Menu(self.window)
+        filemenu = tk.Menu(menubar, tearoff=0)
+        filemenu.add_command(label="Save Config", command=lambda: self._save_config())
+        filemenu.add_command(label="Load Config", command=lambda: self._load_config())
+        menubar.add_cascade(label="File", menu=filemenu)
+        self.window.config(menu=menubar)
+
+    def _save_config(self):
+        from src.general.general_tab import save_gui_state
+        save_gui_state(self)
+
+    def _load_config(self):
+        from src.general.general_tab import load_gui_state
+        load_gui_state(self)
 
     # Create Header
     # *********************************************************************************************
