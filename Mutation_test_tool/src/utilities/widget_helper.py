@@ -112,7 +112,7 @@ class FolderEntry(BaseEntry):
 def show_progress_popup(app, message="Processing..."):
     """
     Show a modal progress bar popup. Returns the popup window.
-    Call popup.destroy() to close it when the operation is done.
+    Call app.window.after(0, popup.destroy) to close it when the operation is done.
     """
     popup = ctk.CTkToplevel(app.window)
     popup.title("Please Wait")

@@ -23,6 +23,7 @@ import os
 import time
 import json
 import threading
+import concurrent.futures
 from pathlib import Path
 from bs4 import BeautifulSoup
 from src.utilities.messagebox_helper import SimpleErrorMessage
@@ -489,58 +490,83 @@ def gen_mutant(app):
             function_name = app.function_option.get()
             if function_name == "All":
                 function_list = app.function_option.cget("values")
+                total_mutants = 0
                 for function_name in function_list[1:]:
-                    prompt_and_gen_mutant(app, function_name, c_file_path)
+                    # Update progress bar message
+                    for widget in popup.winfo_children():
+                        if isinstance(widget, ctk.CTkLabel):
+                            widget.configure(text=f"Generating mutant for {function_name}...")
+                            popup.update()
+                    mutants = prompt_and_gen_mutant(app, function_name, c_file_path, show_message=False)
+                    if mutants:
+                        total_mutants += len(mutants)
+                # Show only one success message at the end
+                SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"Mutants generated for all functions. Total mutants: {total_mutants}")
             else:
-                prompt_and_gen_mutant(app, function_name, c_file_path)
+                # For individual function, show a popup with the number of mutants generated
+                mutants = prompt_and_gen_mutant(app, function_name, c_file_path, show_message=False)
+                num_mutants = len(mutants) if mutants else 0
+                SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{num_mutants} mutants generated for {function_name}")
         finally:
-            popup.destroy()
+            app.window.after(0, popup.destroy)
     threading.Thread(target=task).start()
 
-def prompt_and_gen_mutant(app, function_name, c_file_path):
-    c_function_code = extract_function_code(c_file_path, function_name)
+def prompt_and_gen_mutant(app, function_name, c_file_path, show_message=True):
+    with open(c_file_path, 'r') as f:
+        c_code = f.read()
+    c_function_code = extract_function_code(c_code, function_name)
 
     system_prompt = "You are a programming expert specializing in mutation testing for C code."
 
     user_prompt = f"""
-    Given the following C function, analyze the code and identify all potential mutation points where a single operator, logical construct, or assignment can be changed to create a meaningful mutant.
+Given the following C function, analyze the code and identify all potential mutation points where a single operator, logical construct, or assignment can be changed to create a meaningful mutant.
 
-    For each mutation point:
-    1. Generate a mutant by changing ONLY ONE operator or logic at that point (e.g., + to -, == to !=, && to ||, > to >=, etc.).
-    2. Give each mutant a unique, descriptive name (e.g., Mutant_GreaterToLess, Mutant_AndToOr, Mutant_IncrementToDecrement).
-    3. Show the complete mutated function as a C code block, with the mutation clearly highlighted or commented (e.g., // MUTATION: changed >= to >).
+For each mutation point:
+1. Generate a mutant by changing ONLY ONE operator or logic at that point (e.g., + to -, == to !=, && to ||, > to >=, etc.).
+2. Give each mutant a unique, descriptive name (e.g., Mutant_GreaterToLess, Mutant_AndToOr, Mutant_IncrementToDecrement).
+3. Show the complete mutated function as a C code block, with the mutation clearly highlighted or commented (e.g., // MUTATION: changed >= to >).
+4. Briefly explain how this mutation changes the function's behavior.
 
-    **Guidelines:**
-    - Only one mutation per mutant.
-    - Do not change variable names or function signatures.
-    - Do not introduce syntax errors.
-    - Do not generate redundant mutants (e.g., do not mutate the same operator in the same way more than once).
-    - Focus on these mutation types:
-        - Arithmetic operators: +, -, *, /, %, ++, --
-        - Relational operators: <, <=, >, >=, ==, !=
-        - Logical operators: &&, ||, !
-        - Assignment operators: =, +=, -=, *=, /=, %=
-        - Return value changes (e.g., change return true to return false)
-        - Control flow changes (e.g., invert a condition)
-        - Off by One error(i < n → i <= n)
-        - Break semantics (int x = 1; → int x = 0)
-        - wrong variable use (return x; instead of return y;)
-        - pointer arithmetic (ptr != NULL → ptr == NULL)
-        - null bugs (int *ptr = &value;→ int *ptr = NULL)
+**Guidelines:**
+- Only one mutation per mutant.
+- Do not change variable names or function signatures.
+- Do not introduce syntax errors.
+- Do not generate redundant mutants (e.g., do not mutate the same operator in the same way more than once).
+- Focus on these mutation types:
+    - Arithmetic operators: +, -, *, /, %, ++, --
+    - Relational operators: <, <=, >, >=, ==, !=
+    - Logical operators: &&, ||, !
+    - Assignment operators: =, +=, -=, *=, /=, %=
+    - Return value changes (e.g., change return true to return false)
+    - Control flow changes (e.g., invert a condition)
+    - Off by One error (i < n → i <= n)
+    - Break semantics (int x = 1; → int x = 0)
+    - Wrong variable use (return x; instead of return y;)
+    - Pointer arithmetic (ptr != NULL → ptr == NULL)
+    - Null bugs (int *ptr = &value;→ int *ptr = NULL)
+- When generating a mutant, only change the specific operator or logic at the mutation point. Do not remove, reorder, or restructure any other part of the function.
+- **Do not remove, skip, or omit any if, else if, or else branches from the original function.**
+- **Do not remove or move any return statements or code blocks from the original function.**
+- **The mutated function must have the same structure, logic, and all branches as the original, except for the single mutation.**
+- **Only change the specific operator or logic at the mutation point; all other code, comments, and formatting must remain unchanged.**
+- **If you change an operator (e.g., -- to ++), do not remove any other code or branches, and do not change the flow of the function.**
+- Always preserve all original control flow (if/else, loops, returns, etc.) and ensure the mutated function is complete and syntactically correct.
+- Output the entire mutated function as a C code block.
 
-    Original function:
-    ```c
-    {c_function_code}
-    """
+Original function:
+```c
+{c_function_code}
+"""
     obj = llmfarminf()
 
     # Get the response
     response = obj._completion(user_prompt, system_prompt)
     # Extract mutants
     mutants = extract_c_blocks(response)
-
-    # Write  mutants
     report = write_and_compile(app, mutants, function_name)
+    # if show_message and len(mutants) > 0:
+    #     SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated for function {function_name}")
+    return mutants
 
 
 def Execute_test(app):
@@ -548,64 +574,50 @@ def Execute_test(app):
     app.livemutant.delete(0, 'end')
     app.mutantscore.delete(0, 'end')
     popup = show_progress_popup(app, "Executing Test Suite...")
+
+    def process_file(file_path, c_file_path, report_src, report_dest):
+        # Copy file content
+        with open(c_file_path, 'w') as dest_file, open(file_path, 'r') as src_file:
+            content = src_file.read()
+            dest_file.write(f"// From file: {os.path.basename(file_path)}\n")
+            dest_file.write(content + "\n\n")
+        execute_test_cantata_cli(c_file_path)
+        if os.path.exists(report_src):
+            shutil.copyfile(report_src, report_dest)
+
     def task():
         try:
-            # select_operator = app.mutant_type_option.get()
-            c_file_path= app.cfile_entry.get()
+            c_file_path = app.cfile_entry.get()
             if app.fctn_option.get() == "All":
                 folder_path = app.workspace_entry.get()
             else:
                 folder_path = os.path.join(app.workspace_entry.get(), app.fctn_option.get())
             if os.path.isdir(folder_path):
-                if app.fctn_option.get() == "All":
-                    #Loop thru each sub folder and replace the c file in WS
-                    for subfolder in os.listdir(folder_path):
-                        subfolder_path = os.path.join(folder_path, subfolder)
-                        # Proceed if the item is a directory
-                        if os.path.isdir(subfolder_path):
-                            # Iterate over each file in the subfolder
-                            for file_name in os.listdir(subfolder_path):
-                                if file_name.endswith('.c'):
-                                    file_path = os.path.join(subfolder_path, file_name)
-                                    # Read the .c file and write it to the destination file
-                                    with open(c_file_path, 'w') as dest_file:
-                                        with open(file_path, 'r') as src_file:
-                                            content = src_file.read()
-                                            dest_file.write(f"// From file: {file_name}\n")
-                                            dest_file.write(content + "\n\n")
-                                    execute_test_cantata_cli(app, file_name, c_file_path)
-                                    # Copy the report from cantata WS to our WS folder
-                                    cantata_dir = os.path.dirname(c_file_path)
-                                    report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
-
-                                    report_dest = os.path.join(subfolder_path, file_name[:-2] +'test_report.html')
-
-                                    # Copy the report from cantata WS to our WS folder
-                                    shutil.copyfile(report_src, report_dest)
-                else:
-                    # Directly check the files in the single folder
-                    for file_name in os.listdir(folder_path):
-                        if file_name.endswith('.c'):
-                            file_path = os.path.join(folder_path, file_name)
-                            # Read the .c file and write it to the destination file
-                            with open(c_file_path, 'w') as dest_file:
-                                with open(file_path, 'r') as src_file:
-                                    content = src_file.read()
-                                    dest_file.write(f"// From file: {file_name}\n")
-                                    dest_file.write(content + "\n\n")
-
-                            execute_test_cantata_cli(app, file_name, c_file_path)
-
-                            # Copy the report from cantata WS to our WS folder
-                            cantata_dir = os.path.dirname(c_file_path)
-                            report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'Cantata Output', 'test_report.html')
-
-                            report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
-
-                            # Copy the report from cantata WS to our WS folder
-                            shutil.copyfile(report_src, report_dest)
+                futures = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:  # Adjust max_workers as needed
+                    if app.fctn_option.get() == "All":
+                        for subfolder in os.listdir(folder_path):
+                            subfolder_path = os.path.join(folder_path, subfolder)
+                            if os.path.isdir(subfolder_path):
+                                for file_name in os.listdir(subfolder_path):
+                                    if file_name.endswith('.c'):
+                                        file_path = os.path.join(subfolder_path, file_name)
+                                        cantata_dir = os.path.dirname(c_file_path)
+                                        report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
+                                        report_dest = os.path.join(subfolder_path, file_name[:-2] +'test_report.html')
+                                        futures.append(executor.submit(process_file, file_path, c_file_path, report_src, report_dest))
+                    else:
+                        for file_name in os.listdir(folder_path):
+                            if file_name.endswith('.c'):
+                                file_path = os.path.join(folder_path, file_name)
+                                cantata_dir = os.path.dirname(c_file_path)
+                                report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'Cantata Output', 'test_report.html')
+                                report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
+                                futures.append(executor.submit(process_file, file_path, c_file_path, report_src, report_dest))
+                    # Wait for all futures to complete
+                    concurrent.futures.wait(futures)
         finally:
-            popup.destroy()
+            app.window.after(0, popup.destroy)
     threading.Thread(target=task).start()
 
 def execute_command(command, show_window=False):
@@ -613,7 +625,7 @@ def execute_command(command, show_window=False):
         creationflags = subprocess.CREATE_NEW_CONSOLE
     else:
         creationflags = subprocess.CREATE_NO_WINDOW
-    
+
     # Run the command with specified creation flags
     process = subprocess.run(['cmd.exe', '/c', command], creationflags=creationflags)
     return process.returncode
@@ -722,7 +734,7 @@ def create_log(app):
 
             SimpleSuccessMessage(app.window, title="Generate Report window", message=f"Consolidated report generated for function {app.function_option.get()}")
         finally:
-            popup.destroy()
+            app.window.after(0, popup.destroy)
     threading.Thread(target=task).start()
 
 def calc_score(app):
@@ -781,15 +793,11 @@ def open_log(app):
 
 
 
-def extract_function_code(c_file_path, function_name):
-    # Regular expression to match function definitions, capturing braces
+def extract_function_code(c_code, function_name):
     function_regex = re.compile(
-        rf'^\s*[a-zA-Z_]\w*\s+{function_name}\s*\([^)]*\)\s*' + r'{[^{}]*({[^{}]*}[^{}]*)*}', re.MULTILINE)
-
-    with open(c_file_path, 'r') as file:
-        c_code = file.read()
-
-    # Find the function by name
+        rf'^\s*[a-zA-Z_]\w*\s+{function_name}\s*\([^)]*\)\s*(?:\n|\r|\r\n|\s)*\{{.*?\}}',
+        re.MULTILINE | re.DOTALL
+    )
     match = function_regex.search(c_code)
     if match:
         return match.group()
@@ -829,8 +837,8 @@ def write_and_compile(app, mutants, function_name):
         with open(dest_path, 'w') as file:
             file.write(modified_content)
 
-    if len(mutants)>0:
-        SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated for function {function_name}")
+    # if len(mutants)>0:
+    #     SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated for function {function_name}")
 
 def replace_function_body(code, func_name, new_function_def):
     pattern = rf'\b\S+\s+{func_name}\s*\([^)]*\)\s*\{{.*?\}}'
@@ -862,6 +870,6 @@ def show_scrollable_dropdown(app, values):
         if selected_index:
             selected = listbox.get(selected_index)
             app.function_option_var.set(selected)
-            popup.destroy()
+            app.window.after(0, popup.destroy)
 
     listbox.bind("<Double-1>", on_select)
