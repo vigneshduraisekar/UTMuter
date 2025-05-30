@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Mutation Test Summary Report</title>
+<style>
+body { font-family: Arial, sans-serif; background-color: #f0f0f0; }
+table { border-collapse: collapse; width: 100%; background-color: white; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th { background-color: #4CAF50; color: white; }
+tr:nth-child(even) {background-color: #f2f2f2;}
+.summary { font-weight: bold; color: #333; }
+.failure-details { display: none; padding: 10px; border: 1px solid #ccc; margin-top: 5px; }
+.clickable { cursor: pointer; color: #007bff; text-decoration: underline; }
+h1 { color: #333; }
+.sim-hackers-watermark {
+  position: fixed;
+  top: 20px;
+  right: 40px;
+  font-size: 3em;
+  color: rgba(128,128,128,0.5);
+  font-weight: bold;
+  z-index: 9999;
+  pointer-events: none;
+}
+</style>
+<script>
+function toggleFailureDetails(id) {
+    var details = document.getElementById(id);
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+    } else {
+        details.style.display = 'none';
+    }
+}
+</script>
+</head>
+<body>
+<div class='sim-hackers-watermark'>Sim_Hackers</div>
+<h1>Mutation Test Summary Report</h1>
+<h2 style='color:#333;'>Function Summary</h2>
+
+    <table style="table-layout: auto; width: auto; min-width: 0; margin-bottom: 30px;">
+        <thead>
+            <tr>
+                <th style="width: 250px; white-space:nowrap;">Function Name</th>
+                <th style="width: 180px; white-space:nowrap;">Number of Mutations</th>
+                <th style="width: 200px; white-space:nowrap;">Mutation Score (%)</th>
+            </tr>
+        </thead>
+        <tbody>
+    
+<tr><td style='white-space:nowrap'>FUN_NET_IsMActive_KL15</td><td>4</td><td><span style='font-size:1.2em;font-weight:bold'>50.00</span></td></tr>
+<tr><td style='white-space:nowrap'>FUN_NET_RBMON_PNC_ActiveAllorFOTA_B</td><td>4</td><td><span style='font-size:1.2em;font-weight:bold'>0.00</span></td></tr>
+</tbody></table>
+<h2 style='color:#333;'>Detailed Summary</h2>
+<h3 style='color:#555;'>FUN_NET_IsMActive_KL15</h3>
+
+        <table>
+        <thead>
+        <tr>
+            <th>Mutation Type</th>
+            <th>Killed/Survived</th>
+        </tr>
+        </thead>
+        <tbody>
+        
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_IsMActive_KL15_false_return-details')">false_return</td><td><span style='color:red;font-weight:bold;'>Survived</span></td></tr><tr><td colspan='2'><div id='FUN_NET_IsMActive_KL15_false_return-details' class='failure-details'><b>Failure Details:</b><br><p>No failure details found.</p></div></td></tr>
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_IsMActive_KL15_inverted_return-details')">inverted_return</td><td><span style='color:green;font-weight:bold;'>Killed</span></td></tr><tr><td colspan='2'><div id='FUN_NET_IsMActive_KL15_inverted_return-details' class='failure-details'><b>Failure Details:</b><br><div style='margin-bottom:10px;padding-left:10px;border-left:2px solid #f00;'><b>Test Case:</b> Test Case: 61: FUN_NET_IsMActive_KL15 - <Insert test case description here><br><b>Summary:</b><ul><li>Summary status: Failed</li><li>Checks passed: 37</li><li>Checks failed: 1</li><li>Checks warning: 0</li><li>Script directives: 4</li><li>Script errors: 0</li><li>Script warnings: 0</li><li>Call sequence failures: 0</li><li>User comments: 0</li></ul><b>Failure:</b><div><font color="RED">
+<h4>Check: returnValue = 0 Failed</h4>
+<p>Source File: test_Net_MonitoringClasses/test_Net_MonitoringClasses.c<br/>
+      Line Number: 1869<br/>
+</p>
+<p>Expected value: 0x00    &lt;NUL&gt;<br/>Actual value: 0x01    &lt;SOH&gt;
+<br/>
+</p>
+</font></div></div></div></td></tr>
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_IsMActive_KL15_null_return-details')">null_return</td><td><span style='color:red;font-weight:bold;'>Survived</span></td></tr><tr><td colspan='2'><div id='FUN_NET_IsMActive_KL15_null_return-details' class='failure-details'><b>Failure Details:</b><br><p>No failure details found.</p></div></td></tr>
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_IsMActive_KL15_true_return-details')">true_return</td><td><span style='color:green;font-weight:bold;'>Killed</span></td></tr><tr><td colspan='2'><div id='FUN_NET_IsMActive_KL15_true_return-details' class='failure-details'><b>Failure Details:</b><br><div style='margin-bottom:10px;padding-left:10px;border-left:2px solid #f00;'><b>Test Case:</b> Test Case: 61: FUN_NET_IsMActive_KL15 - <Insert test case description here><br><b>Summary:</b><ul><li>Summary status: Failed</li><li>Checks passed: 37</li><li>Checks failed: 1</li><li>Checks warning: 0</li><li>Script directives: 4</li><li>Script errors: 0</li><li>Script warnings: 0</li><li>Call sequence failures: 0</li><li>User comments: 0</li></ul><b>Failure:</b><div><font color="RED">
+<h4>Check: returnValue = 0 Failed</h4>
+<p>Source File: test_Net_MonitoringClasses/test_Net_MonitoringClasses.c<br/>
+      Line Number: 1869<br/>
+</p>
+<p>Expected value: 0x00    &lt;NUL&gt;<br/>Actual value: 0x01    &lt;SOH&gt;
+<br/>
+</p>
+</font></div></div></div></td></tr>
+</tbody></table>
+<h3 style='color:#555;'>FUN_NET_RBMON_PNC_ActiveAllorFOTA_B</h3>
+
+        <table>
+        <thead>
+        <tr>
+            <th>Mutation Type</th>
+            <th>Killed/Survived</th>
+        </tr>
+        </thead>
+        <tbody>
+        
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_false_return-details')">false_return</td><td><span style='color:red;font-weight:bold;'>Survived</span></td></tr><tr><td colspan='2'><div id='FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_false_return-details' class='failure-details'><b>Failure Details:</b><br><p>No failure details found.</p></div></td></tr>
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_inverted_return-details')">inverted_return</td><td><span style='color:red;font-weight:bold;'>Survived</span></td></tr><tr><td colspan='2'><div id='FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_inverted_return-details' class='failure-details'><b>Failure Details:</b><br><p>No failure details found.</p></div></td></tr>
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_null_return-details')">null_return</td><td><span style='color:red;font-weight:bold;'>Survived</span></td></tr><tr><td colspan='2'><div id='FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_null_return-details' class='failure-details'><b>Failure Details:</b><br><p>No failure details found.</p></div></td></tr>
+<tr><td class='clickable' onclick="toggleFailureDetails('FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_true_return-details')">true_return</td><td><span style='color:red;font-weight:bold;'>Survived</span></td></tr><tr><td colspan='2'><div id='FUN_NET_RBMON_PNC_ActiveAllorFOTA_B_true_return-details' class='failure-details'><b>Failure Details:</b><br><p>No failure details found.</p></div></td></tr>
+</tbody></table>
+<button onclick="window.print()">Save as PDF</button>
+</body>
+</html>
