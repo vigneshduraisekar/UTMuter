@@ -495,8 +495,9 @@ def gen_mutant(app):
                     # Update progress bar message
                     for widget in popup.winfo_children():
                         if isinstance(widget, ctk.CTkLabel):
-                            widget.configure(text=f"Generating mutant for {function_name}...")
-                            popup.update()
+                            if popup.winfo_exists():
+                                widget.configure(text=f"Generating mutant for {function_name}...")
+                                popup.update()
                     mutants = prompt_and_gen_mutant(app, function_name, c_file_path, show_message=False)
                     if mutants:
                         total_mutants += len(mutants)
@@ -508,7 +509,8 @@ def gen_mutant(app):
                 num_mutants = len(mutants) if mutants else 0
                 SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{num_mutants} mutants generated for {function_name}")
         finally:
-            app.window.after(0, popup.destroy)
+            if popup.winfo_exists():
+                app.window.after(0, popup.destroy)
     threading.Thread(target=task).start()
 
 def prompt_and_gen_mutant(app, function_name, c_file_path, show_message=True):
@@ -568,7 +570,6 @@ Original function:
     #     SimpleSuccessMessage(app.window, title="Generate Mutant window", message=f"{len(mutants)} Mutants generated for function {function_name}")
     return mutants
 
-
 def Execute_test(app):
     app.killedmutant.delete(0, 'end')
     app.livemutant.delete(0, 'end')
@@ -576,12 +577,11 @@ def Execute_test(app):
     popup = show_progress_popup(app, "Executing Test Suite...")
 
     def process_file(file_path, c_file_path, report_src, report_dest):
-        # Copy file content
         with open(c_file_path, 'w') as dest_file, open(file_path, 'r') as src_file:
             content = src_file.read()
             dest_file.write(f"// From file: {os.path.basename(file_path)}\n")
             dest_file.write(content + "\n\n")
-        execute_test_cantata_cli(c_file_path)
+        execute_test_cantata_cli(app, os.path.basename(file_path), c_file_path, show_popup=False)
         if os.path.exists(report_src):
             shutil.copyfile(report_src, report_dest)
 
@@ -593,32 +593,65 @@ def Execute_test(app):
             else:
                 folder_path = os.path.join(app.workspace_entry.get(), app.fctn_option.get())
             if os.path.isdir(folder_path):
-                futures = []
-                with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:  # Adjust max_workers as needed
-                    if app.fctn_option.get() == "All":
-                        for subfolder in os.listdir(folder_path):
-                            subfolder_path = os.path.join(folder_path, subfolder)
-                            if os.path.isdir(subfolder_path):
-                                for file_name in os.listdir(subfolder_path):
-                                    if file_name.endswith('.c'):
-                                        file_path = os.path.join(subfolder_path, file_name)
-                                        cantata_dir = os.path.dirname(c_file_path)
-                                        report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
-                                        report_dest = os.path.join(subfolder_path, file_name[:-2] +'test_report.html')
-                                        futures.append(executor.submit(process_file, file_path, c_file_path, report_src, report_dest))
-                    else:
-                        for file_name in os.listdir(folder_path):
-                            if file_name.endswith('.c'):
-                                file_path = os.path.join(folder_path, file_name)
-                                cantata_dir = os.path.dirname(c_file_path)
-                                report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'Cantata Output', 'test_report.html')
-                                report_dest = os.path.join(folder_path, file_name[:-2] +'test_report.html')
-                                futures.append(executor.submit(process_file, file_path, c_file_path, report_src, report_dest))
-                    # Wait for all futures to complete
-                    concurrent.futures.wait(futures)
+                if app.fctn_option.get() == "All":
+                    for subfolder in os.listdir(folder_path):
+                        subfolder_path = os.path.join(folder_path, subfolder)
+                        if os.path.isdir(subfolder_path):
+                            for file_name in os.listdir(subfolder_path):
+                                if file_name.endswith('.c'):
+                                    file_path = os.path.join(subfolder_path, file_name)
+                                    cantata_dir = os.path.dirname(c_file_path)
+                                    report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'test_Net_MonitoringClasses', 'test_Net_MonitoringClasses.log')
+                                    report_dest = os.path.join(subfolder_path, file_name[:-2] +'test.log')
+                                    process_file(file_path, c_file_path, report_src, report_dest)
+                else:
+                    for file_name in os.listdir(folder_path):
+                        if file_name.endswith('.c'):
+                            file_path = os.path.join(folder_path, file_name)
+                            cantata_dir = os.path.dirname(c_file_path)
+                            report_src = os.path.join(cantata_dir, 'Cantata', 'tests', 'test_Net_MonitoringClasses', 'test_Net_MonitoringClasses.log')
+
+                            report_dest = os.path.join(folder_path, file_name[:-2] +'_test.log')
+                            process_file(file_path, c_file_path, report_src, report_dest)
+            # Show success popup only once after all test cases are executed
+            app.window.after(0, lambda: SimpleSuccessMessage(app.window, title="Execute test window", message="All test cases executed successfully."))
         finally:
-            app.window.after(0, popup.destroy)
+            if popup.winfo_exists():
+                app.window.after(0, popup.destroy)
+
     threading.Thread(target=task).start()
+
+# Update execute_test_cantata_cli to accept show_popup argument
+def execute_test_cantata_cli(app, file_name, c_file_path, show_popup=True):
+    def run_cmd_in_window(retry_interval = 5):
+        cantata_dir = os.path.dirname(c_file_path)
+        test_dir = os.path.join(cantata_dir, 'Cantata', 'tests')
+        test_dir = os.path.normpath(test_dir)
+
+        pre_build_command = (
+            f"cd {test_dir} && "
+            "texec -useEnv:ae.be aeee_pro/2017.1.2 && "
+            "make clean && "
+            "make all EXECUTE=1 OUTPUT_TO_CONSOLE=1 "
+        )
+        pre_build_return_code = execute_command(pre_build_command, show_window=True)
+
+        # post_build_commands = (
+        #     f"cd {test_dir} && "
+        #     "texec -useEnv:ae.be aeee_pro/2017.1.2 && "
+        #     r"set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace && "
+        #     f"set PROJECT_PATH={test_dir} && "
+        #     r"aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT"
+        # )
+        # post_build_return_code = execute_command(post_build_commands, show_window=True)
+        # if post_build_return_code == 0:
+        #     a = 1
+
+    run_cmd_in_window()
+
+    # Only show the popup if requested
+    if show_popup:
+        SimpleSuccessMessage(app.window, title="Execute test window", message=f"Test executed for c file-{file_name} successfully")
 
 def execute_command(command, show_window=False):
     if show_window:
@@ -629,47 +662,6 @@ def execute_command(command, show_window=False):
     # Run the command with specified creation flags
     process = subprocess.run(['cmd.exe', '/c', command], creationflags=creationflags)
     return process.returncode
-
-def execute_test_cantata_cli(app,file_name, c_file_path):
-    def run_cmd_in_window(retry_interval = 5):
-    # Define the test directory using a raw string
-        cantata_dir = os.path.dirname(c_file_path)
-        test_dir = os.path.join(cantata_dir, 'Cantata', 'tests')
-        test_dir = os.path.normpath(test_dir)
-        # test_dir = r"C:\Work\MyDocs\Hackathon\Repo\Net_MonitoringClasses_UT\Net_MonitoringClasses\Cantata\tests"
-
-        pre_build_command = (
-            f"cd {test_dir} && "
-            "texec -useEnv:ae.be aeee_pro/2017.1.2 && "
-            "make clean && "
-            "make all EXECUTE=1 OUTPUT_TO_CONSOLE=1 "
-        )
-
-        # Execute pre-build commands
-        pre_build_return_code = execute_command(pre_build_command, show_window=True)
-
-        post_build_commands = (
-            f"cd {test_dir} && "
-            "texec -useEnv:ae.be aeee_pro/2017.1.2 && "
-            r"set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace && "
-            f"set PROJECT_PATH={test_dir} && "
-            r"aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT"
-        )
-
-        post_build_return_code = execute_command(post_build_commands, show_window=True)
-        if post_build_return_code == 0:
-            a=1
-
-    run_cmd_in_window()
-
-    SimpleSuccessMessage(app.window, title="Execute test window", message=f"Test executed for c file-{file_name} successfully")
-
-
-
-    # Generate Report
-    # run_cmd('set WORKSPACE_PATH=%APPDATA%/workspace/BBM/%UBK_PRODUCT%/%UBK_PRODUCT_VERSION%/workspace')
-
-    # run_cmd('aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT')
 
 def create_log(app):
     popup = show_progress_popup(app, "Executing Test Suite...")
@@ -734,7 +726,8 @@ def create_log(app):
 
             SimpleSuccessMessage(app.window, title="Generate Report window", message=f"Consolidated report generated for function {app.function_option.get()}")
         finally:
-            app.window.after(0, popup.destroy)
+            if popup.winfo_exists():
+                app.window.after(0, popup.destroy)
     threading.Thread(target=task).start()
 
 def calc_score(app):
@@ -870,6 +863,7 @@ def show_scrollable_dropdown(app, values):
         if selected_index:
             selected = listbox.get(selected_index)
             app.function_option_var.set(selected)
-            app.window.after(0, popup.destroy)
+            if popup.winfo_exists():
+                app.window.after(0, popup.destroy)
 
     listbox.bind("<Double-1>", on_select)
