@@ -321,7 +321,7 @@ def logging_panel(app):
     calc_score_button.grid(row=1, column=2, padx=5, pady=5, sticky=tk.EW)
 
 
-    openlog_button = ctk.CTkButton(log_label, text="Open report")
+    openlog_button = ctk.CTkButton(log_label, text="Open Consolidated Report")
     openlog_button.configure(command=lambda: open_log(app))
     openlog_button.grid(row=2, column=2, padx=5, pady=5, sticky=tk.EW)
 
@@ -509,7 +509,6 @@ def prompt_and_gen_mutant(app, function_name, c_file_path):
     1. Generate a mutant by changing ONLY ONE operator or logic at that point (e.g., + to -, == to !=, && to ||, > to >=, etc.).
     2. Give each mutant a unique, descriptive name (e.g., Mutant_GreaterToLess, Mutant_AndToOr, Mutant_IncrementToDecrement).
     3. Show the complete mutated function as a C code block, with the mutation clearly highlighted or commented (e.g., // MUTATION: changed >= to >).
-    4. Briefly explain how this mutation changes the function's behavior.
 
     **Guidelines:**
     - Only one mutation per mutant.
@@ -523,6 +522,11 @@ def prompt_and_gen_mutant(app, function_name, c_file_path):
         - Assignment operators: =, +=, -=, *=, /=, %=
         - Return value changes (e.g., change return true to return false)
         - Control flow changes (e.g., invert a condition)
+        - Off by One error(i < n → i <= n)
+        - Break semantics (int x = 1; → int x = 0)
+        - wrong variable use (return x; instead of return y;)
+        - pointer arithmetic (ptr != NULL → ptr == NULL)
+        - null bugs (int *ptr = &value;→ int *ptr = NULL)
 
     Original function:
     ```c
@@ -540,6 +544,9 @@ def prompt_and_gen_mutant(app, function_name, c_file_path):
 
 
 def Execute_test(app):
+    app.killedmutant.delete(0, 'end')
+    app.livemutant.delete(0, 'end')
+    app.mutantscore.delete(0, 'end')
     popup = show_progress_popup(app, "Executing Test Suite...")
     def task():
         try:
@@ -566,7 +573,7 @@ def Execute_test(app):
                                             content = src_file.read()
                                             dest_file.write(f"// From file: {file_name}\n")
                                             dest_file.write(content + "\n\n")
-                                    execute_test_cantata_cli(c_file_path)
+                                    execute_test_cantata_cli(app, file_name, c_file_path)
                                     # Copy the report from cantata WS to our WS folder
                                     cantata_dir = os.path.dirname(c_file_path)
                                     report_src = os.path.join(cantata_dir, 'Cantata', 'results', 'test_report.html')
@@ -587,7 +594,7 @@ def Execute_test(app):
                                     dest_file.write(f"// From file: {file_name}\n")
                                     dest_file.write(content + "\n\n")
 
-                            execute_test_cantata_cli(c_file_path)
+                            execute_test_cantata_cli(app, file_name, c_file_path)
 
                             # Copy the report from cantata WS to our WS folder
                             cantata_dir = os.path.dirname(c_file_path)
@@ -601,13 +608,17 @@ def Execute_test(app):
             popup.destroy()
     threading.Thread(target=task).start()
 
-def execute_command(command, keep_window_open=False):
-    # Use subprocess.run() to wait for the command to finish
-    shell_command = '/k' if keep_window_open else '/c'
-    process = subprocess.run(['cmd.exe', shell_command, command], creationflags=subprocess.CREATE_NEW_CONSOLE)
+def execute_command(command, show_window=False):
+    if show_window:
+        creationflags = subprocess.CREATE_NEW_CONSOLE
+    else:
+        creationflags = subprocess.CREATE_NO_WINDOW
+    
+    # Run the command with specified creation flags
+    process = subprocess.run(['cmd.exe', '/c', command], creationflags=creationflags)
     return process.returncode
 
-def execute_test_cantata_cli(c_file_path):
+def execute_test_cantata_cli(app,file_name, c_file_path):
     def run_cmd_in_window(retry_interval = 5):
     # Define the test directory using a raw string
         cantata_dir = os.path.dirname(c_file_path)
@@ -623,7 +634,7 @@ def execute_test_cantata_cli(c_file_path):
         )
 
         # Execute pre-build commands
-        pre_build_return_code = execute_command(pre_build_command)
+        pre_build_return_code = execute_command(pre_build_command, show_window=True)
 
         post_build_commands = (
             f"cd {test_dir} && "
@@ -633,11 +644,13 @@ def execute_test_cantata_cli(c_file_path):
             r"aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT"
         )
 
-        post_build_return_code = execute_command(post_build_commands)
+        post_build_return_code = execute_command(post_build_commands, show_window=True)
         if post_build_return_code == 0:
             a=1
 
     run_cmd_in_window()
+
+    SimpleSuccessMessage(app.window, title="Execute test window", message=f"Test executed for c file-{file_name} successfully")
 
 
 
@@ -647,65 +660,76 @@ def execute_test_cantata_cli(c_file_path):
     # run_cmd('aeee_pro -application com.ipl.products.eclipse.cantpp.cdt.TestReportGenerator -data %WORKSPACE_PATH% %PROJECT_PATH% HTML_DETAILED_REPORT')
 
 def create_log(app):
-    fields_to_extract = [
-    "Summary status",
-    "Total number of test cases",
-    "Test cases passed",
-    "Test cases failed",
-    "Checks passed",
-    "Checks failed"
-    ]
+    popup = show_progress_popup(app, "Executing Test Suite...")
+    def task():
+        try:
+            fields_to_extract = [
+            "Summary status",
+            "Total number of test cases",
+            "Test cases passed",
+            "Test cases failed",
+            "Checks passed",
+            "Checks failed"
+            ]
 
-    # Consolidated results list
-    consolidated_data = []
-    # folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
-    folder_path = app.workspace_entry.get()
-    for root, dirs, files in os.walk(folder_path):
-        for file in files:
-            if file.endswith("test_report.html"):
-                file_path = os.path.join(root, file)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    soup = BeautifulSoup(f, "html.parser")
+            # Consolidated results list
+            consolidated_data = []
+            if app.function_option.get() == "All":
+                folder_path = app.workspace_entry.get()
+            else:
+                folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
+            for root, dirs, files in os.walk(folder_path):
+                for file in files:
+                    if file.endswith("test_report.html"):
+                        file_path = os.path.join(root, file)
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            soup = BeautifulSoup(f, "html.parser")
 
-                # Extract info
-                data = {"File": os.path.relpath(file_path, folder_path)}
-                for row in soup.find_all("tr"):
-                    cols = row.find_all(["td", "th"])
-                    if len(cols) >= 2:
-                        key = cols[0].get_text(strip=True)
-                        val = cols[1].get_text(strip=True)
-                        if key in fields_to_extract:
-                            data[key] = val
-                consolidated_data.append(data)
+                        # Extract info
+                        data = {"File": os.path.relpath(file_path, folder_path)}
+                        for row in soup.find_all("tr"):
+                            cols = row.find_all(["td", "th"])
+                            if len(cols) >= 2:
+                                key = cols[0].get_text(strip=True)
+                                val = cols[1].get_text(strip=True)
+                                if key in fields_to_extract:
+                                    data[key] = val
+                        consolidated_data.append(data)
 
-    # Generate HTML table
-    output_html = "<html><head><title>Consolidated Test Report</title></head><body>"
-    output_html += "<h2>Consolidated Test Report</h2><table border='1' cellpadding='5'><tr><th>File</th>"
+            # Generate HTML table
+            output_html = "<html><head><title>Consolidated Test Report</title></head><body>"
+            output_html += "<h2>Consolidated Test Report</h2><table border='1' cellpadding='5'><tr><th>File</th>"
 
-    # Add headers
-    for field in fields_to_extract:
-        output_html += f"<th>{field}</th>"
-    output_html += "</tr>"
+            # Add headers
+            for field in fields_to_extract:
+                output_html += f"<th>{field}</th>"
+            output_html += "</tr>"
 
-    # Add rows
-    for entry in consolidated_data:
-        output_html += "<tr>"
-        output_html += f"<td>{entry.get('File', '')}</td>"
-        for field in fields_to_extract:
-            output_html += f"<td>{entry.get(field, '')}</td>"
-        output_html += "</tr>"
+            # Add rows
+            for entry in consolidated_data:
+                output_html += "<tr>"
+                output_html += f"<td>{entry.get('File', '')}</td>"
+                for field in fields_to_extract:
+                    output_html += f"<td>{entry.get(field, '')}</td>"
+                output_html += "</tr>"
 
-    output_html += "</table></body></html>"
+            output_html += "</table></body></html>"
 
-    # Save consolidated report
-    output_file = os.path.join(folder_path, "consolidated_report.html")
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write(output_html)
+            # Save consolidated report
+            output_file = os.path.join(folder_path, "consolidated_report.html")
+            with open(output_file, "w", encoding="utf-8") as f:
+                f.write(output_html)
 
-    SimpleSuccessMessage(app.window, title="Generate Report window", message=f"Consolidated report generated successfully")
+            SimpleSuccessMessage(app.window, title="Generate Report window", message=f"Consolidated report generated for function {app.function_option.get()}")
+        finally:
+            popup.destroy()
+    threading.Thread(target=task).start()
 
 def calc_score(app):
-    folder_path = app.workspace_entry.get()
+    if app.function_option.get() == "All":
+        folder_path = app.workspace_entry.get()
+    else:
+        folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
     file_path = os.path.join(folder_path, "consolidated_report.html")
     with open(file_path, 'r', encoding='utf-8') as file:
         html_content = file.read()
@@ -732,16 +756,19 @@ def calc_score(app):
     live_mutant = failed_tests.count('0')
     killed_mutant = len(failed_tests) - live_mutant
     app.killedmutant.delete(0, 'end')
-    app.killedmutant.insert(0, killed_mutant)
     app.livemutant.delete(0, 'end')
+    app.mutantscore.delete(0, 'end')
+    app.killedmutant.insert(0, killed_mutant)
     app.livemutant.insert(0, live_mutant)
     score = (killed_mutant/num_rows)*100
-    percentage_score = f"{score:.2f}%"
-    app.mutantscore.delete(0, 'end')
+    percentage_score = f"{score:.1f}%"
     app.mutantscore.insert(0,percentage_score)
 
 def open_log(app):
-    folder_path = app.workspace_entry.get()
+    if app.function_option.get() == "All":
+        folder_path = app.workspace_entry.get()
+    else:
+        folder_path = os.path.join(app.workspace_entry.get(), app.function_option.get())
     file_path = os.path.join(folder_path, "consolidated_report.html")
 
     # Check if the file exists
